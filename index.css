@@ -1,0 +1,191 @@
+@import url("https://fonts.googleapis.com/css2?family=Raleway:ital,wght@0,100..900;1,100..900&display=swap");
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: "Raleway", sans-serif;
+}
+
+:root {
+  --danger-light: #ffc2d2;
+  --success-light: #d4edda;
+  --primary-dark: #0b2e13;
+  --warning-light: #fff3cd;
+  --dager-light: #f8d7da;
+  --warning: #ffbf00;
+  --off-white: #f2f0ef;
+  --success: #28a745;
+}
+
+body {
+  background-color: #f4f4f4;
+  width: 100%;
+  height: 100dvh;
+}
+
+ul,
+ol {
+  list-style-type: none;
+  margin: 0;
+  color: black;
+}
+
+/* HEAD STYLING */
+.head {
+  width: 100%;
+  height: 4rem;
+  background-color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: solid 0.5px var(--primary-dark);
+  padding: 0.3rem;
+}
+
+.head .logo {
+  display: flex;
+  gap: 8px;
+}
+
+.icon {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: var(--primary-dark);
+  border-radius: 5px;
+}
+
+.icon .material-symbols-outlined {
+  color: white;
+  font-size: 2.5rem;
+  font-weight: 100;
+  padding: 0.2rem;
+}
+
+.head .details {
+  display: flex;
+  padding: 0.5rem;
+  justify-content: center;
+  align-items: center;
+  gap: 2rem;
+}
+
+.logo .icon-txt {
+  text-align: start;
+  color: var(--primary-dark);
+  font-weight: 400;
+}
+
+.details .weeks {
+  background-color: var(--warning);
+  padding: 10px 20px;
+  border-radius: 16px;
+}
+
+.details .weeks p {
+  font-weight: 600;
+  color: var(--primary-dark);
+}
+
+/* END HEAD STYLING */
+
+.summary-container {
+  margin-top: 2rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+  padding: 0.5rem 0.5rem;
+}
+
+/* SUMMARY CARDS */
+.summary-card {
+  display: flex;
+  justify-content: space-between;
+  border: 0.5px solid rgba(0, 0, 0, 0.2);
+  padding: 10px 20px;
+  border-radius: 12px;
+  transition: box-shadow 0.3s ease-in, transform 0.3s ease-in;
+}
+
+.summary-card:hover {
+  box-shadow: rgba(0, 0, 0, 0.2) 0px 8px 24px;
+  transform: translateY(-3px);
+}
+
+.summary-card h4 {
+  color: var(--primary-dark);
+  font-weight: 200;
+  margin-bottom: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.summary-card .amount {
+  color: var(--primary-dark);
+  font-weight: 600;
+  font-size: 1.5rem;
+}
+
+#available-funds .summary-card-icon {
+  background-color: var(--primary-dark);
+  color: white;
+  height: 40px;
+  width: 40px;
+  border-radius: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#available-funds,
+#interest-earned {
+  background-color: var(--success-light);
+}
+
+#contributions {
+  background-color: white;
+}
+
+#loans-issued {
+  background-color: var(--warning-light);
+}
+
+#contributions .summary-card-icon {
+  background-color: var(--off-white);
+  color: rgb(0, 0, 0);
+  height: 40px;
+  width: 40px;
+  border-radius: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#loans-issued .summary-card-icon {
+  background-color: var(--warning);
+  color: rgb(0, 0, 0);
+  height: 40px;
+  width: 40px;
+  border-radius: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#interest-earned .summary-card-icon {
+  background-color: var(--success);
+  color: white;
+  height: 40px;
+  width: 40px;
+  border-radius: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.summary-card .material-symbols-outlined {
+  font-size: 2rem;
+  font-weight: 100;
+}
+
+/* END SUMMARY CARDS */
