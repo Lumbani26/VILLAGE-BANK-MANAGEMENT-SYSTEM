@@ -8,23 +8,30 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"
     />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css"
+    />
     <link rel="stylesheet" href="index.css" />
   </head>
   <body>
     <section class="head">
       <div class="logo">
-        <div class="icon">
+        <div class="head-icon">
           <span class="material-symbols-outlined"> account_balance </span>
         </div>
 
         <div class="icon-txt">
-          <h3 class="head-txt">Tsogolo</h3>
+          <h3 class="head-txt">tsogolo</h3>
           <h5 class="head-mini-txt">Savings Group</h5>
         </div>
       </div>
       <div class="details">
         <div class="weeks">
-          <p>week <span>1</span> of <span>14</span></p>
+          <p>
+            week <span class="current-week">1</span> of
+            <span class="week-cycle">14</span>
+          </p>
         </div>
         <span class="material-symbols-outlined"> notifications </span>
         <span class="material-symbols-outlined"> settings </span>
@@ -88,5 +95,110 @@
         </div>
       </div>
     </section>
+
+    <section class="outstanding-loans">
+      <div class="outstanding-loans-container">
+        <div class="warning-sign">
+          <span class="material-symbols-outlined"> error </span>
+        </div>
+        <div class="outstanding-loans-txt">
+          <h4>Outstanding Loans</h4>
+          <p>
+            A total of <span class="currency">MWK</span>
+            <span class="amount" id="outstanding-loans"> 35,000</span> in unpaid
+            loans
+          </p>
+        </div>
+      </div>
+      <a href="#loan-more-details">
+        <h5 class="loan-details">
+          <div>View Details</div>
+
+          <div>
+            <span class="material-symbols-outlined"> arrow_forward_ios </span>
+          </div>
+        </h5>
+      </a>
+    </section>
+
+    <section class="cycle">
+      <div class="cycle-container">
+        <div class="calendar-icon">
+          <span class="material-symbols-outlined"> calendar_month </span>
+        </div>
+        <div class="cycle-txt">
+          <h4>
+            week <span class="current-week">1</span> of
+            <span class="week-cycle">14</span>
+          </h4>
+          <p>
+            <span class="weeks-remaining"> 13 </span> weeks remaining in this
+            cycle
+          </p>
+
+          <progress class="progress is-primary-dark" value="10" max="100">
+            10%
+          </progress>
+        </div>
+      </div>
+      <a href="#advanced-cycle-details">
+        <h5 class="week-details">
+          <div>Advance Week</div>
+
+          <div>
+            <span class="material-symbols-outlined"> arrow_forward_ios </span>
+          </div>
+        </h5>
+      </a>
+    </section>
+
+    <section class="management-section container">
+      <div class="columns gap-8">
+        <div class="column is-3 members">
+          <div class="member-head">
+            <h2 class="is-size-4">Members</h2>
+
+            <button class="button add-member">
+              <span class="material-symbols-outlined"> person_add </span>
+            </button>
+          </div>
+          <div class="member-list">
+            <div class="control member-search">
+              <input type="text" class="input" placeholder="search member" />
+
+              <button class="button is-small search-icon">
+                <span class="material-symbols-outlined search-icon">
+                  search
+                </span>
+              </button>
+            </div>
+
+            <ul>
+              <li>Lumbani Shumba</li>
+              <li>Chisomo Shumba</li>
+              <li>Innocent Siyeni</li>
+              <li>Veronica Siyeni</li>
+            </ul>
+          </div>
+        </div>
+        <div class="column is-9 loan-management">
+          <div class="tabs is-boxed loan-management-tabs">
+            <ul>
+              <li class="is-active" data-target="weekly-contributions">
+                <a>Contributions</a>
+              </li>
+              <li data-target="loans"><a>Loans</a></li>
+              <li data-target="distributions"><a>Distribution</a></li>
+            </ul>
+          </div>
+
+          <div class="tab-content contribution">
+            <h2 class="is-size-4">Weekly contributions</h2>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="Management"></section>
   </body>
 </html>

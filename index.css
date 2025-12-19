@@ -16,6 +16,11 @@
   --warning: #ffbf00;
   --off-white: #f2f0ef;
   --success: #28a745;
+  --red-light: #fff1f1;
+  --red-mid: #ffc2c2;
+  --red-intermediate: #ff8383;
+  --red-intense: #ff4545;
+  --red-very-intense: #ff0f0f;
 }
 
 body {
@@ -31,6 +36,10 @@ ol {
   color: black;
 }
 
+a {
+  text-decoration: none;
+  color: inherit;
+}
 /* HEAD STYLING */
 .head {
   width: 100%;
@@ -38,25 +47,30 @@ ol {
   background-color: white;
   display: flex;
   justify-content: space-between;
+  gap: 1rem;
   align-items: center;
   border-bottom: solid 0.5px var(--primary-dark);
-  padding: 0.3rem;
+  padding: 2rem 0.3rem;
 }
 
 .head .logo {
   display: flex;
-  gap: 8px;
-}
-
-.icon {
+  gap: 0.6rem;
   display: flex;
   justify-content: center;
   align-items: center;
+  height: auto;
+  width: auto;
+}
+
+.head-icon {
+  height: auto;
+  width: auto;
   background-color: var(--primary-dark);
   border-radius: 5px;
 }
 
-.icon .material-symbols-outlined {
+.head-icon .material-symbols-outlined {
   color: white;
   font-size: 2.5rem;
   font-weight: 100;
@@ -71,16 +85,22 @@ ol {
   gap: 2rem;
 }
 
-.logo .icon-txt {
+.logo .icon-txt h3 {
   text-align: start;
   color: var(--primary-dark);
-  font-weight: 400;
+  font-weight: 600;
+}
+.icon-txt h5 {
+  font-weight: 300;
+  font-size: 0.9rem;
 }
 
 .details .weeks {
   background-color: var(--warning);
-  padding: 10px 20px;
-  border-radius: 16px;
+  height: auto;
+  width: auto;
+  padding: 6px 12px;
+  border-radius: 12px;
 }
 
 .details .weeks p {
@@ -91,7 +111,7 @@ ol {
 /* END HEAD STYLING */
 
 .summary-container {
-  margin-top: 2rem;
+  margin-top: 1.5rem;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 1rem;
@@ -189,3 +209,176 @@ ol {
 }
 
 /* END SUMMARY CARDS */
+
+/* OUTSTANDING LOANS CONTAINER */
+
+.outstanding-loans {
+  margin-top: 2rem;
+  padding: 1rem 0.5rem 1rem 0.5rem;
+  border: solid 0.5px rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  margin-left: 0.5rem;
+  margin-right: 0.5rem;
+  background-color: var(--red-light);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.outstanding-loans .outstanding-loans-container {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.outstanding-loans-container .warning-sign {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 2rem;
+  width: 2rem;
+  background-color: var(--red-mid);
+  border-radius: 50%;
+}
+
+.outstanding-loans-txt h4 {
+  color: var(--red-very-intense);
+  font-weight: 400;
+}
+
+.outstanding-loans-txt p {
+  margin-top: 0.2rem;
+  font-weight: 400;
+}
+
+.loan-details {
+  border: 0.5px solid var(--red-very-intense);
+  padding: 6px 12px;
+  border-radius: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  font-size: small;
+  font-weight: 400;
+  color: var(--red-very-intense);
+}
+
+.loan-details .material-symbols-outlined {
+  font-size: smaller;
+}
+
+/* END OUTSTANDING LOANS */
+
+/* WEEK CYCLE */
+
+.cycle {
+  margin-top: 1.5rem;
+  padding: 1rem 0.5rem 1rem 0.5rem;
+  border: solid 0.5px rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  margin-left: 0.5rem;
+  margin-right: 0.5rem;
+  background-color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cycle .cycle-container {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.cycle-container .calendar-icon {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 2rem;
+  width: 2rem;
+  background-color: var(--off-white);
+  border-radius: 25%;
+}
+
+.cycle-txt h4 {
+  color: rgb(0, 0, 0);
+  font-weight: 500;
+}
+
+.cycle-txt p {
+  color: rgb(0, 0, 0);
+  font-weight: 300;
+}
+
+.cycle .progress {
+  margin-top: 0.5rem;
+  height: 10px;
+  width: 100%;
+}
+
+.week-details {
+  border: 0.5px solid rgb(0, 0, 0);
+  padding: 6px 12px;
+  border-radius: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  font-size: small;
+  font-weight: 400;
+  color: rgb(0, 0, 0);
+}
+
+.week-details .material-symbols-outlined {
+  font-size: smaller;
+}
+
+/* END WEEK CYCLE */
+
+/* MANAGEMENT SECTION  */
+
+.management-section {
+  margin-top: 2rem;
+  margin-left: 1.3rem;
+  margin-right: 1.3rem;
+}
+
+.management-section .members {
+  border: solid 0.5px rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+}
+
+.member-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.member-head .add-member {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: var(--primary-dark);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.member-list {
+  margin-top: 1rem;
+}
+
+.member-list ul {
+  margin-top: 1.5rem;
+}
+
+.member-search {
+  display: flex;
+  gap: 1rem;
+}
