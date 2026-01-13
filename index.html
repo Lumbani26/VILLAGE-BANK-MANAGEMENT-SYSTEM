@@ -153,7 +153,7 @@
     </section>
 
     <section class="management-section container">
-      <div class="columns gap-8">
+      <div class="columns gap-8 is-variable">
         <div class="column is-3 members">
           <div class="member-head">
             <h2 class="is-size-4">Members</h2>
@@ -181,24 +181,177 @@
             </ul>
           </div>
         </div>
-        <div class="column is-9 loan-management">
-          <div class="tabs is-boxed loan-management-tabs">
+        <div class="column is-9 loan-management ml-6">
+          <!-- tabbed headings management -->
+          <div class="tabs is-fullwidth is-boxed loan-management-tabs">
             <ul>
-              <li class="is-active" data-target="weekly-contributions">
-                <a>Contributions</a>
+              <li class="is-active" data-target="weekly-shares">
+                <a class="tab">Contributions</a>
               </li>
-              <li data-target="loans"><a>Loans</a></li>
-              <li data-target="distributions"><a>Distribution</a></li>
+              <li data-target="loans-taken"><a class="tab">Loans</a></li>
+              <li data-target="distribution-info">
+                <a class="tab">Distribution</a>
+              </li>
             </ul>
           </div>
 
-          <div class="tab-content contribution">
-            <h2 class="is-size-4">Weekly contributions</h2>
+          <!-- end tab headings on management  -->
+
+          <div class="px-2" id="tabbed-content">
+            <div class="weekly-shares" id="weekly-shares">
+              <h3 class="is-size-5 title">Weekly contributions</h3>
+
+              <!-- Weekly contributions table:first tabbed-content  -->
+              <table
+                class="table is-fullwidth is-striped is-hoverable is-centered"
+              >
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Week 1</th>
+                    <th>Week 2</th>
+                    <th>Week 3</th>
+                    <th>Week 4</th>
+                    <th>Week 5</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  <tr>
+                    <td>Lumbani Shumba</td>
+                    <td>
+                      <span class="material-symbols-outlined" id="check">
+                        check
+                      </span>
+                    </td>
+                    <td>
+                      <span class="material-symbols-outlined" id="check">
+                        check
+                      </span>
+                    </td>
+                    <td>
+                      <span class="material-symbols-outlined" id="check">
+                        check
+                      </span>
+                    </td>
+                    <td>
+                      <span class="material-symbols-outlined" id="schedule">
+                        schedule
+                      </span>
+                    </td>
+                    <td>
+                      <span class="material-symbols-outlined" id="close">
+                        close_small
+                      </span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Chisomo Shumba</td>
+                    <td>
+                      <span class="material-symbols-outlined" id="check">
+                        check
+                      </span>
+                    </td>
+                    <td>
+                      <span class="material-symbols-outlined" id="check">
+                        check
+                      </span>
+                    </td>
+                    <td>
+                      <span class="material-symbols-outlined" id="check">
+                        check
+                      </span>
+                    </td>
+                    <td>
+                      <span class="material-symbols-outlined" id="schedule">
+                        schedule
+                      </span>
+                    </td>
+                    <td>
+                      <span class="material-symbols-outlined" id="close">
+                        close_small
+                      </span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Innocent Siyeni</td>
+                    <td>
+                      <span class="material-symbols-outlined"> check </span>
+                    </td>
+                    <td>
+                      <span class="material-symbols-outlined"> check </span>
+                    </td>
+                    <td>
+                      <span class="material-symbols-outlined"> check </span>
+                    </td>
+                    <td>
+                      <span class="material-symbols-outlined"> schedule </span>
+                    </td>
+                    <td>
+                      <span class="material-symbols-outlined">
+                        close_small
+                      </span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Veronica Siyeni</td>
+                    <td>
+                      <span class="material-symbols-outlined" id="check">
+                        check
+                      </span>
+                    </td>
+                    <td>
+                      <span class="material-symbols-outlined" id="check">
+                        check
+                      </span>
+                    </td>
+                    <td>
+                      <span class="material-symbols-outlined" id="check">
+                        check
+                      </span>
+                    </td>
+                    <td>
+                      <span class="material-symbols-outlined" id="check">
+                        schedule
+                      </span>
+                    </td>
+                    <td>
+                      <span class="material-symbols-outlined" id="close">
+                        close_small
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <!-- end of weekly shares information -->
+
+            <div id="loans-taken" class="is-hidden">
+              <h3 class="is-size-5 title">Loans Taken</h3>
+
+              <p>
+                Lorem ipsum dolor sit amet consectetur adipisicing elit.
+                Quibusdam id natus hic saepe minima cum earum, distinctio
+                deserunt eum quis quaerat repudiandae minus esse maiores nulla
+                cumque assumenda quae voluptate?
+              </p>
+            </div>
+
+            <div id="distribution-info" class="is-hidden">
+              <h3 class="is-size-5 title">Distribution Information</h3>
+
+              <p>
+                Lorem ipsum dolor sit amet consectetur adipisicing elit.
+                Quibusdam id natus hic saepe minima cum earum, distinctio
+                deserunt eum quis quaerat repudiandae minus esse maiores nulla
+                cumque assumenda quae voluptate?
+              </p>
+            </div>
           </div>
         </div>
       </div>
     </section>
 
-    <section class="Management"></section>
+    <script src="index.js"></script>
   </body>
 </html>
