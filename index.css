@@ -346,6 +346,7 @@ a {
   margin-top: 2rem;
   margin-left: 1.3rem;
   margin-right: 1.3rem;
+  width: auto;
 }
 
 .management-section .members {
@@ -394,8 +395,9 @@ a {
 }
 
 table {
-  width: 100%;
-  border-collapse: collapse;
+  width: 400px;
+  height: 100px;
+  overflow-y: scroll;
 }
 
 table th,
