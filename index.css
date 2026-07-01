@@ -40,7 +40,6 @@
     --bd: rgba(255, 255, 255, 0.1);
     --bd2: rgba(255, 255, 255, 0.2);
     --g50: #173404;
-    --g100: #27500a;
     --g200: #3b6d11;
     --g600: #97c459;
     --g800: #c0dd97;
@@ -63,7 +62,40 @@ body {
   min-height: 100vh;
 }
 
-/* AUTH */
+/* ── LOADING ── */
+#loading-screen {
+  position: fixed;
+  inset: 0;
+  background: var(--bg2);
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+#loading-screen.gone {
+  display: none;
+}
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--bd2);
+  border-top-color: var(--g600);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.loading-txt {
+  font-size: 14px;
+  color: var(--tx3);
+}
+
+/* ── AUTH ── */
 #auth-screen {
   position: fixed;
   inset: 0;
@@ -127,7 +159,7 @@ body {
   text-decoration: underline;
 }
 
-/* HEADER */
+/* ── HEADER ── */
 header {
   background: var(--bg);
   border-bottom: 1px solid var(--bd);
@@ -167,7 +199,7 @@ header {
 .hright {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   flex-wrap: wrap;
 }
 .wbadge {
@@ -178,6 +210,14 @@ header {
   padding: 3px 11px;
   font-size: 12px;
   font-weight: 500;
+}
+.syncing {
+  font-size: 11px;
+  color: var(--tx3);
+  display: none;
+}
+.syncing.show {
+  display: block;
 }
 .rpill {
   border-radius: 20px;
@@ -207,7 +247,7 @@ header {
   background: var(--bg3);
 }
 
-/* MAIN */
+/* ── MAIN ── */
 main {
   max-width: 980px;
   margin: 0 auto;
@@ -229,7 +269,7 @@ main {
   display: none;
 }
 
-/* TABS */
+/* ── TABS ── */
 .tabs {
   display: flex;
   gap: 4px;
@@ -263,7 +303,7 @@ main {
   display: block;
 }
 
-/* CARDS */
+/* ── CARDS ── */
 .card {
   background: var(--bg);
   border-radius: var(--rad);
@@ -296,7 +336,7 @@ main {
   font-weight: 600;
 }
 
-/* FORMS */
+/* ── FORMS ── */
 .frow {
   display: flex;
   gap: 10px;
@@ -363,7 +403,7 @@ button.red:hover {
   background: var(--r800);
 }
 
-/* TABLES */
+/* ── TABLES ── */
 .tw {
   overflow-x: auto;
   border-radius: var(--rad);
@@ -396,7 +436,7 @@ tr:hover td {
   background: var(--bg2);
 }
 
-/* BADGES / ALERTS */
+/* ── BADGES / ALERTS ── */
 .badge {
   display: inline-block;
   border-radius: 20px;
@@ -476,7 +516,7 @@ tr:hover td {
   color: var(--tx3);
 }
 
-/* MODALS */
+/* ── MODALS ── */
 .mo {
   display: none;
   position: fixed;
@@ -511,7 +551,6 @@ tr:hover td {
   margin-top: 15px;
 }
 
-/* admin-only hiding */
 body.viewer .ao {
   display: none !important;
 }

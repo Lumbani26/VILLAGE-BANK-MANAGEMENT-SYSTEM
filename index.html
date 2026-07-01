@@ -3,15 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Village Bank — Community Loan Tracker</title>
+    <title>Tsogolo Bank — Loan Tracker</title>
     <link rel="stylesheet" href="index.css" />
   </head>
   <body class="viewer">
-    <!-- ═══ AUTH SCREEN ═══════════════════════════════════════════ -->
-    <div id="auth-screen">
+    <!-- LOADING -->
+    <div id="loading-screen">
+      <div class="auth-icon" style="margin: 0">T</div>
+      <div class="spinner"></div>
+      <div class="loading-txt">Connecting to Tsogolo Bank...</div>
+    </div>
+
+    <!-- AUTH -->
+    <div id="auth-screen" class="gone">
       <div class="auth-card">
-        <div class="auth-icon">VB</div>
-        <div class="auth-h">Village Bank</div>
+        <div class="auth-icon">T</div>
+        <div class="auth-h">Tsogolo Village Bank</div>
         <div class="auth-sub">Community Loan Tracker</div>
         <div class="fg" style="margin-bottom: 10px">
           <label>Admin Password</label>
@@ -30,8 +37,7 @@
       </div>
     </div>
 
-    <!-- ═══ MODALS ════════════════════════════════════════════════ -->
-    <!-- Change password -->
+    <!-- MODALS -->
     <div
       class="mo"
       id="pw-mo"
@@ -57,7 +63,7 @@
         </div>
       </div>
     </div>
-    <!-- Clear data -->
+
     <div
       class="mo"
       id="clear-mo"
@@ -66,8 +72,8 @@
       <div class="mbox">
         <div class="mtitle">⚠ Clear All Data</div>
         <p style="margin-bottom: 14px; color: var(--tx2)">
-          This will permanently delete all members, loans, contributions, and
-          reset the week counter. This cannot be undone.
+          This permanently deletes all members, loans, contributions and resets
+          the week counter in the shared database. Cannot be undone.
         </p>
         <div class="fg" style="margin-bottom: 10px">
           <label>Type <strong>CLEAR</strong> to confirm</label
@@ -79,7 +85,7 @@
         </div>
       </div>
     </div>
-    <!-- Member detail -->
+
     <div
       class="mo"
       id="mem-mo"
@@ -93,7 +99,29 @@
         </div>
       </div>
     </div>
-    <!-- Issue loan -->
+
+    <div
+      class="mo"
+      id="edit-mem-mo"
+      onclick="if (event.target === this) closeEditMemMo();"
+    >
+      <div class="mbox">
+        <div class="mtitle">Edit Member</div>
+        <input type="hidden" id="edit-mem-id" />
+        <div class="fg" style="margin-bottom: 11px">
+          <label>Full Name</label><input type="text" id="edit-mem-name" />
+        </div>
+        <div class="fg" style="margin-bottom: 11px">
+          <label>Phone (optional)</label
+          ><input type="text" id="edit-mem-phone" />
+        </div>
+        <div class="mact">
+          <button class="sec" onclick="closeEditMemMo()">Cancel</button
+          ><button onclick="saveEditMember()">Save Changes</button>
+        </div>
+      </div>
+    </div>
+
     <div
       class="mo"
       id="loan-mo"
@@ -104,7 +132,7 @@
         <div id="loan-mo-body"></div>
       </div>
     </div>
-    <!-- Repay -->
+
     <div
       class="mo"
       id="repay-mo"
@@ -116,16 +144,17 @@
       </div>
     </div>
 
-    <!-- ═══ HEADER ════════════════════════════════════════════════ -->
+    <!-- HEADER -->
     <header>
       <div class="hbrand">
-        <div class="hicon">VB</div>
+        <div class="hicon">T</div>
         <div>
-          <div class="hname">Village Bank</div>
-          <div class="hsub">Community Loan Tracker</div>
+          <div class="hname">Tsogolo Bank</div>
+          <div class="hsub">Loan Tracker</div>
         </div>
       </div>
       <div class="hright">
+        <span class="syncing" id="sync-indicator">⟳ Syncing...</span>
         <span class="wbadge" id="hweek">Week 0 of 14</span>
         <span class="rpill viewer" id="rpill">Viewer</span>
         <button class="hbtn ao" id="lock-btn" onclick="lockApp()">
@@ -139,23 +168,21 @@
         >
           🔑 Admin Login
         </button>
-        <button class="hbtn ao" onclick="openPwMo()">⚙ Password</button>
+        <button class="hbtn ao" onclick="openPwMo()">⚙</button>
         <button
-          class="hbtn ao red"
+          class="hbtn ao"
           onclick="openClearMo()"
           style="border-color: var(--r600); color: var(--r600)"
         >
-          🗑 Clear Data
+          🗑
         </button>
       </div>
     </header>
 
-    <!-- ═══ MAIN ══════════════════════════════════════════════════ -->
     <main>
       <div class="vbanner gone" id="vbanner">
         🔒 Read-only view — contact the admin to make changes.
       </div>
-
       <div class="tabs">
         <button class="tab active" onclick="showTab('dash')">Dashboard</button>
         <button class="tab" onclick="showTab('members')">Members</button>
@@ -180,8 +207,17 @@
             "
           >
             Advance the week to record contributions and check loan maturity.
+            Roll back to undo the last advance.
           </div>
-          <button onclick="advanceWeek()">
+          <button
+            class="sec"
+            onclick="rollBackWeek()"
+            id="rollback-btn"
+            style="display: none"
+          >
+            ← Roll Back
+          </button>
+          <button onclick="advanceWeek()" id="advance-btn">
             Advance to Week <span id="d-nextw">1</span> →
           </button>
         </div>
@@ -255,6 +291,6 @@
       </div>
     </main>
 
-    <script src="index.js"></script>
+    <script type="module" src="index.js"></script>
   </body>
 </html>
