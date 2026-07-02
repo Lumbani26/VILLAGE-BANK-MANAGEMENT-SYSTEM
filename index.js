@@ -391,7 +391,7 @@ function renderDash() {
   const totalOwed = aLoans.reduce((s, l) => s + loanOutstanding(l), 0);
   document.getElementById("d-stats").innerHTML = `
     <div class="scard"><div class="slabel">Total Pool</div><div class="sval">${fmt(poolTotal())}</div></div>
-    <div class="scard"><div class="slabel">Seed (${n}×75k)</div><div class="sval">${fmt(seedTotal())}</div></div>
+    <div class="scard"><div class="slabel">Seed (${n}×100k)</div><div class="sval">${fmt(seedTotal())}</div></div>
     <div class="scard"><div class="slabel">Contributions</div><div class="sval">${fmt(totalContribs())}</div></div>
     <div class="scard"><div class="slabel">Interest Earned</div><div class="sval">${fmt(totalInterest())}</div></div>
     <div class="scard"><div class="slabel">Outstanding Loans</div><div class="sval">${fmt(totalOwed)}</div></div>
