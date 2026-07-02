@@ -17,8 +17,8 @@
     <!-- AUTH -->
     <div id="auth-screen" class="gone">
       <div class="auth-card">
-        <div class="auth-icon">T</div>
-        <div class="auth-h">Tsogolo</div>
+        <div class="auth-icon">VB</div>
+        <div class="auth-h">Tsogolo Bank</div>
         <div class="auth-sub">Loan Tracker</div>
         <div class="fg" style="margin-bottom: 10px">
           <label>Admin Password</label>
@@ -144,6 +144,21 @@
       </div>
     </div>
 
+    <div
+      class="mo"
+      id="del-loan-mo"
+      onclick="if (event.target === this) closeDelLoanMo();"
+    >
+      <div class="mbox">
+        <div class="mtitle">🗑 Delete Loan</div>
+        <div id="del-loan-body"></div>
+        <div class="mact">
+          <button class="sec" onclick="closeDelLoanMo()">Cancel</button>
+          <button class="red" onclick="confirmDeleteLoan()">Delete Loan</button>
+        </div>
+      </div>
+    </div>
+
     <!-- HEADER -->
     <header>
       <div class="hbrand">
@@ -155,7 +170,7 @@
       </div>
       <div class="hright">
         <span class="syncing" id="sync-indicator">⟳ Syncing...</span>
-        <span class="wbadge" id="hweek">Week 0 of 14</span>
+        <span class="wbadge" id="hweek">Week 0 of 20</span>
         <span class="rpill viewer" id="rpill">Viewer</span>
         <button class="hbtn ao" id="lock-btn" onclick="lockApp()">
           🔒 Lock

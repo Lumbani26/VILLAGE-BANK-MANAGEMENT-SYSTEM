@@ -1,5 +1,3 @@
-// Firebase SDKs
-
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
   getFirestore,
@@ -35,7 +33,6 @@ const DEFAULT_HASH =
 // ═══ RUNTIME ═════════════════════════════════════════════════
 let isAdmin = false;
 let state = null; // live from Firestore
-let isSaving = false;
 
 function freshState() {
   return {
@@ -49,15 +46,14 @@ function freshState() {
 
 // ═══ PERSISTENCE ═════════════════════════════════════════════
 async function saveState() {
-  isSaving = true;
   showSync(true);
   try {
     await setDoc(STATE_DOC, { data: JSON.stringify(state) });
   } catch (e) {
     alert("Save failed: " + e.message);
   }
-  isSaving = false;
   showSync(false);
+  renderAll(); // update UI immediately without waiting for Firestore echo
 }
 
 function showSync(on) {
@@ -214,7 +210,7 @@ function getMember(id) {
   return state.members.find((m) => m.id === id);
 }
 function seedTotal() {
-  return 100000 * state.members.length;
+  return 75000 * state.members.length;
 }
 function loanTotalDue(l) {
   return l.principal * (1 + INTEREST);
@@ -395,7 +391,7 @@ function renderDash() {
   const totalOwed = aLoans.reduce((s, l) => s + loanOutstanding(l), 0);
   document.getElementById("d-stats").innerHTML = `
     <div class="scard"><div class="slabel">Total Pool</div><div class="sval">${fmt(poolTotal())}</div></div>
-    <div class="scard"><div class="slabel">Seed (${n}×100k)</div><div class="sval">${fmt(seedTotal())}</div></div>
+    <div class="scard"><div class="slabel">Seed (${n}×75k)</div><div class="sval">${fmt(seedTotal())}</div></div>
     <div class="scard"><div class="slabel">Contributions</div><div class="sval">${fmt(totalContribs())}</div></div>
     <div class="scard"><div class="slabel">Interest Earned</div><div class="sval">${fmt(totalInterest())}</div></div>
     <div class="scard"><div class="slabel">Outstanding Loans</div><div class="sval">${fmt(totalOwed)}</div></div>
@@ -423,7 +419,10 @@ function renderDash() {
       const owed = loanOutstanding(l);
       const overdue = l.due_week < state.currentWeek;
       const rb = isAdmin
-        ? `<td><button onclick="openRepay(${l.id})" style="padding:3px 8px;font-size:11px">Repay</button></td>`
+        ? `<td style="white-space:nowrap">
+      <button onclick="openRepay(${l.id})" style="padding:3px 8px;font-size:11px">Repay</button>
+      <button class="red" onclick="openDeleteLoan(${l.id})" style="padding:3px 8px;font-size:11px">Delete</button>
+    </td>`
         : "<td></td>";
       return `<tr><td>${m ? m.name : "?"}</td><td>${fmt(l.principal)}</td><td>${fmt(loanTotalDue(l))}</td><td>${fmt(owed)}</td><td>Wk${l.due_week}</td>
       <td>${overdue ? '<span class="badge br">Overdue</span>' : '<span class="badge ba">Active</span>'}</td>${rb}</tr>`;
@@ -654,6 +653,53 @@ async function doRepay(loanId) {
 }
 window.doRepay = doRepay;
 
+let deleteLoanId = null;
+
+function openDeleteLoan(loanId) {
+  if (!isAdmin) {
+    alert("Admin access required.");
+    return;
+  }
+  const ln = state.loans.find((l) => l.id === loanId);
+  if (!ln) return;
+  const m = getMember(ln.memberId);
+  deleteLoanId = loanId;
+  document.getElementById("del-loan-body").innerHTML = `
+    <div style="background:var(--r50);border:1px solid var(--r600);border-radius:var(--rads);padding:12px;margin-bottom:14px;font-size:13px;color:var(--r600)">
+      This will permanently remove this loan and all its repayment records. This cannot be undone.
+    </div>
+    <div style="background:var(--bg3);border-radius:var(--rads);padding:12px;font-size:13px;margin-bottom:4px">
+      <strong>Loan #${ln.id}</strong> — ${m ? m.name : "Unknown"}<br>
+      Principal: ${fmt(ln.principal)}<br>
+      Total Due: ${fmt(loanTotalDue(ln))}<br>
+      Status: <span style="text-transform:capitalize">${ln.status}</span><br>
+      ${ln.note ? `Note: ${ln.note}` : ""}
+    </div>`;
+  document.getElementById("del-loan-mo").classList.add("open");
+}
+window.openDeleteLoan = openDeleteLoan;
+
+function closeDelLoanMo() {
+  document.getElementById("del-loan-mo").classList.remove("open");
+  deleteLoanId = null;
+}
+window.closeDelLoanMo = closeDelLoanMo;
+
+async function confirmDeleteLoan() {
+  if (!isAdmin || deleteLoanId === null) return;
+  // If this loan was a rollover, restore the original loan back to 'active'
+  const ln = state.loans.find((l) => l.id === deleteLoanId);
+  if (ln && ln.note.startsWith("Rollover from loan #")) {
+    const origId = parseInt(ln.note.replace("Rollover from loan #", ""));
+    const orig = state.loans.find((l) => l.id === origId);
+    if (orig && orig.status === "rolled") orig.status = "active";
+  }
+  state.loans = state.loans.filter((l) => l.id !== deleteLoanId);
+  closeDelLoanMo();
+  await saveState();
+}
+window.confirmDeleteLoan = confirmDeleteLoan;
+
 function renderLoans() {
   if (!state.loans.length) {
     document.getElementById("loan-list").innerHTML =
@@ -669,14 +715,16 @@ function renderLoans() {
       let bc = "bx";
       if (l.status === "active") bc = od ? "br" : "ba";
       if (l.status === "paid") bc = "bg";
-      const rb =
-        isAdmin && l.status === "active"
-          ? `<td><button onclick="openRepay(${l.id})" style="padding:3px 8px;font-size:11px">Repay</button></td>`
-          : "<td></td>";
+      const actions = isAdmin
+        ? `<td style="white-space:nowrap">
+      ${l.status === "active" ? `<button onclick="openRepay(${l.id})" style="padding:3px 8px;font-size:11px">Repay</button> ` : ""}
+      <button class="red" onclick="openDeleteLoan(${l.id})" style="padding:3px 8px;font-size:11px">Delete</button>
+    </td>`
+        : "<td></td>";
       return `<tr><td>#${l.id}</td><td>${m ? m.name : "?"}</td><td>${fmt(l.principal)}</td><td>${fmt(loanTotalDue(l))}</td>
       <td>${fmt(owed)}</td><td>Wk${l.issued_week}</td><td>Wk${l.due_week}</td>
       <td><span class="badge ${bc}">${l.status}${od ? " ⚠" : ""}</span></td>
-      <td style="font-size:11px;color:var(--tx3)">${l.note || ""}</td>${rb}</tr>`;
+      <td style="font-size:11px;color:var(--tx3)">${l.note || ""}</td>${actions}</tr>`;
     })
     .join("");
   document.getElementById("loan-list").innerHTML = `<div class="tw"><table>
@@ -758,7 +806,7 @@ function renderShare() {
     .map((m) => {
       const debt = memberBalance(m.id);
       const net = Math.max(0, eq - debt);
-      return `<tr><td><strong>${m.name}</strong></td><td>${fmt(75000)}</td><td>${fmt(eq)}</td>
+      return `<tr><td><strong>${m.name}</strong></td><td>${fmt(100000)}</td><td>${fmt(eq)}</td>
       <td>${debt > 0 ? `<span style="color:var(--r600)">${fmt(debt)}</span>` : "—"}</td>
       <td><strong>${fmt(net)}</strong></td></tr>`;
     })
@@ -767,7 +815,7 @@ function renderShare() {
     <div class="sgrid" style="margin-bottom:16px">
       <div class="scard"><div class="slabel">Total Pool</div><div class="sval">${fmt(pool)}</div></div>
       <div class="scard"><div class="slabel">Members</div><div class="sval">${n}</div></div>
-      <div class="scard"><div class="slabel">Seed per Member</div><div class="sval">${fmt(75000)}</div></div>
+      <div class="scard"><div class="slabel">Seed per Member</div><div class="sval">${fmt(100000)}</div></div>
       <div class="scard"><div class="slabel">Equal Share Each</div><div class="sval">${fmt(eq)}</div></div>
     </div>
     <div style="background:var(--g50);border:1px solid var(--g200);border-radius:var(--rad);padding:14px;margin-bottom:14px;font-size:13px;color:var(--g800)">
@@ -781,30 +829,37 @@ function renderShare() {
 
 // ═══ FIRESTORE REAL-TIME LISTENER ════════════════════════════
 // Listen for changes from any device — UI updates automatically
+let appReady = false;
+
 onSnapshot(
   STATE_DOC,
   (snap) => {
-    if (isSaving) return; // skip echoes of our own saves
-    if (snap.exists()) {
-      try {
-        state = JSON.parse(snap.data().data);
-      } catch {
-        state = freshState();
-      }
-    } else {
-      state = freshState();
-    }
+    const incoming = snap.exists()
+      ? (() => {
+          try {
+            return JSON.parse(snap.data().data);
+          } catch {
+            return freshState();
+          }
+        })()
+      : freshState();
 
-    // First load: hide loading, show auth
-    if (
-      document.getElementById("loading-screen") &&
-      !document.getElementById("loading-screen").classList.contains("gone")
-    ) {
+    if (!appReady) {
+      // First load — boot the app
+      state = incoming;
+      appReady = true;
       document.getElementById("loading-screen").classList.add("gone");
       document.getElementById("auth-screen").classList.remove("gone");
       setTimeout(() => document.getElementById("auth-pw").focus(), 100);
     } else {
-      renderAll(); // live update from another device
+      // Subsequent updates — only apply if data actually changed (avoids overwriting
+      // in-flight local state with a stale echo right after our own save)
+      const incomingStr = JSON.stringify(incoming);
+      const currentStr = JSON.stringify(state);
+      if (incomingStr !== currentStr) {
+        state = incoming;
+        renderAll();
+      }
     }
   },
   (error) => {
