@@ -210,7 +210,7 @@ function getMember(id) {
   return state.members.find((m) => m.id === id);
 }
 function seedTotal() {
-  return 75000 * state.members.length;
+  return 100000 * state.members.length;
 }
 function loanTotalDue(l) {
   return l.principal * (1 + INTEREST);
