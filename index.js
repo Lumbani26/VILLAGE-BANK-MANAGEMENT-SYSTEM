@@ -23,7 +23,7 @@ const CFG_DOC = doc(db, "bank", "config");
 // ═══ CYCLE RULES ═════════════════════════════════════════════
 const CONTRIBUTION = 10000; // weekly contribution amount
 const SEED_AMOUNT = 100000; // seed per member
-const SEED_DUE_WEEK = 5; // seed must be paid back by week 5
+const SEED_DUE_WEEK = 6; // seed must be paid back by week 6
 const ACTIVE_WEEKS = 20; // contributions & loans: weeks 1–20
 const GRACE_WEEKS = 5; // grace period: weeks 21–25
 const TOTAL_WEEKS = ACTIVE_WEEKS + GRACE_WEEKS; // 25
@@ -566,7 +566,7 @@ function renderDash() {
     alerts +=
       '<div class="alert aa">Add members then advance to Week 1 to begin. Optionally set a commencement date.</div>';
   if (state.commenceDate && state.currentWeek > 0)
-    alerts += `<div class="alert ag">📅 Week ${state.currentWeek} — ${weekDate(state.currentWeek)}</div>`;
+    alerts += `<div class="alert ag"> Week ${state.currentWeek} — ${weekDate(state.currentWeek)}</div>`;
   if (grace && !isCycleComplete())
     alerts += `<div class="alert ap">⏳ Grace period active. Weeks ${ACTIVE_WEEKS + 1}–${TOTAL_WEEKS}. All debts must be cleared by Week ${TOTAL_WEEKS}.</div>`;
   const od = aLoans.filter((l) => l.due_week < state.currentWeek);
@@ -579,7 +579,7 @@ function renderDash() {
       state.currentWeek > 0,
   );
   if (seedWarning.length && !grace)
-    alerts += `<div class="alert aa">💡 ${seedWarning.length} member(s) yet to repay their seed. Due by Week ${SEED_DUE_WEEK}.</div>`;
+    alerts += `<div class="alert aa"> ${seedWarning.length} member(s) yet to repay their seed. Due by Week ${SEED_DUE_WEEK}.</div>`;
   if (isCycleComplete())
     alerts +=
       '<div class="alert ag">✓ Cycle complete! See the Share tab for final distribution.</div>';
