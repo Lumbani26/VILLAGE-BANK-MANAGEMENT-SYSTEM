@@ -17,7 +17,7 @@
     <!-- AUTH -->
     <div id="auth-screen" class="gone">
       <div class="auth-card">
-        <div class="auth-icon">VB</div>
+        <div class="auth-icon">T</div>
         <div class="auth-h">Tsogolo Bank</div>
         <div class="auth-sub">Loan Tracker</div>
         <div class="fg" style="margin-bottom: 10px">
@@ -70,18 +70,71 @@
       onclick="if (event.target === this) closeClearMo();"
     >
       <div class="mbox">
-        <div class="mtitle">⚠ Clear All Data</div>
-        <p style="margin-bottom: 14px; color: var(--tx2)">
-          This permanently deletes all members, loans, contributions and resets
-          the week counter in the shared database. Cannot be undone.
+        <div class="mtitle">Start New Cycle</div>
+        <div
+          style="
+            background: var(--g50);
+            border: 1px solid var(--g200);
+            border-radius: var(--rads);
+            padding: 12px;
+            margin-bottom: 14px;
+            font-size: 13px;
+            color: var(--g800);
+          "
+        >
+          ✓ Member list is <strong>kept</strong> for the new cycle<br />
+          ✓ Use "Delete Member" on any member not rejoining
+        </div>
+        <p style="margin-bottom: 14px; color: var(--tx2); font-size: 13px">
+          This resets: loans, contributions, seed payments, week counter, and
+          commencement date. Cannot be undone.
         </p>
         <div class="fg" style="margin-bottom: 10px">
-          <label>Type <strong>CLEAR</strong> to confirm</label
-          ><input type="text" id="clear-confirm" placeholder="CLEAR" />
+          <label>Type <strong>NEWCYCLE</strong> to confirm</label
+          ><input type="text" id="clear-confirm" placeholder="NEWCYCLE" />
         </div>
         <div class="mact">
           <button class="sec" onclick="closeClearMo()">Cancel</button
-          ><button class="red" onclick="doClear()">Clear All Data</button>
+          ><button class="red" onclick="doClear()">Start New Cycle</button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="mo"
+      id="del-mem-mo"
+      onclick="if (event.target === this) closeDelMemMo();"
+    >
+      <div class="mbox">
+        <div class="mtitle">🗑 Remove Member</div>
+        <div id="del-mem-body"></div>
+        <div class="mact">
+          <button class="sec" onclick="closeDelMemMo()">Cancel</button
+          ><button class="red" onclick="confirmDeleteMember()">
+            Remove Member
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="mo"
+      id="date-mo"
+      onclick="if (event.target === this) closeDateMo();"
+    >
+      <div class="mbox">
+        <div class="mtitle">Set Commencement Date</div>
+        <p style="margin-bottom: 14px; color: var(--tx2); font-size: 13px">
+          Set the date of Week 1. All subsequent weeks will be calculated as
+          weekly intervals from this date.
+        </p>
+        <div class="fg" style="margin-bottom: 14px">
+          <label>Week 1 Start Date</label
+          ><input type="date" id="commence-date" />
+        </div>
+        <div class="mact">
+          <button class="sec" onclick="closeDateMo()">Cancel</button
+          ><button onclick="saveCommenceDate()">Set Date</button>
         </div>
       </div>
     </div>
@@ -153,8 +206,10 @@
         <div class="mtitle">🗑 Delete Loan</div>
         <div id="del-loan-body"></div>
         <div class="mact">
-          <button class="sec" onclick="closeDelLoanMo()">Cancel</button>
-          <button class="red" onclick="confirmDeleteLoan()">Delete Loan</button>
+          <button class="sec" onclick="closeDelLoanMo()">Cancel</button
+          ><button class="red" onclick="confirmDeleteLoan()">
+            Delete Loan
+          </button>
         </div>
       </div>
     </div>
@@ -164,13 +219,14 @@
       <div class="hbrand">
         <div class="hicon">T</div>
         <div>
-          <div class="hname">Tsogolo</div>
+          <div class="hname">Tsogolo Bank</div>
           <div class="hsub">Loan Tracker</div>
         </div>
       </div>
       <div class="hright">
         <span class="syncing" id="sync-indicator">⟳ Syncing...</span>
         <span class="wbadge" id="hweek">Week 0 of 20</span>
+        <span class="grace-badge" id="grace-badge">Grace Period</span>
         <span class="rpill viewer" id="rpill">Viewer</span>
         <button class="hbtn ao" id="lock-btn" onclick="lockApp()">
           🔒 Lock
@@ -187,9 +243,9 @@
         <button
           class="hbtn ao"
           onclick="openClearMo()"
-          style="border-color: var(--r600); color: var(--r600)"
+          style="border-color: var(--g600); color: var(--g600)"
         >
-          🗑
+          🔄 New Cycle
         </button>
       </div>
     </header>
@@ -198,6 +254,11 @@
       <div class="vbanner gone" id="vbanner">
         🔒 Read-only view — contact the admin to make changes.
       </div>
+      <div class="grace-banner" id="grace-banner">
+        ⏳ <strong>Grace Period (Weeks 21–25):</strong> No new contributions or
+        loans. All outstanding balances must be repaid before Week 25.
+      </div>
+
       <div class="tabs">
         <button class="tab active" onclick="showTab('dash')">Dashboard</button>
         <button class="tab" onclick="showTab('members')">Members</button>
@@ -211,6 +272,7 @@
         <div class="sgrid" id="d-stats"></div>
         <div
           class="card ao"
+          id="week-ctrl"
           style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap"
         >
           <div
@@ -220,10 +282,13 @@
               font-size: 13px;
               color: var(--tx2);
             "
+            id="week-ctrl-desc"
           >
             Advance the week to record contributions and check loan maturity.
-            Roll back to undo the last advance.
           </div>
+          <button class="sec" onclick="openDateMo()" id="date-btn">
+            📅 Set Date
+          </button>
           <button
             class="sec"
             onclick="rollBackWeek()"
@@ -281,7 +346,9 @@
       <div class="view" id="view-loans">
         <div class="sh">
           <span class="st">All Loans</span>
-          <button class="ao" onclick="openIssueLoan(null)">+ Issue Loan</button>
+          <button class="ao" id="issue-loan-btn" onclick="openIssueLoan(null)">
+            + Issue Loan
+          </button>
         </div>
         <div id="loan-list"></div>
       </div>
