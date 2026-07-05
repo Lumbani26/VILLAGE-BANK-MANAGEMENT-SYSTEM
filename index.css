@@ -2,6 +2,7 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  font-family: "Poppins", sans-serif;
 }
 :root {
   --g50: #eaf3de;
@@ -577,6 +578,8 @@ body.viewer .ao {
   }
   header {
     padding: 9px 12px;
+    display: flex;
+    justify-content: space-between;
   }
   .hright {
     gap: 5px;
