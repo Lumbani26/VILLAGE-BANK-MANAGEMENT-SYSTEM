@@ -254,6 +254,11 @@ header {
 .hbtn:hover {
   background: var(--bg3);
 }
+.hbtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  background: transparent;
+}
 main {
   max-width: 980px;
   margin: 0 auto;

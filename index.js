@@ -194,7 +194,7 @@ function openDeleteMember(id) {
     Object.keys(state.contributions[id] || {}).length > 0;
   document.getElementById("del-mem-body").innerHTML = `
     <div style="background:var(--r50);border:1px solid var(--r600);border-radius:var(--rads);padding:12px;margin-bottom:14px;font-size:13px;color:var(--r600)">
-      Removes <strong>${m.name}</strong> and all their loan and contribution records. This cannot be undone.
+      Removes <strong>${m.name}</strong> and all their loan and contribution records. You can reverse this with Undo.
     </div>
     ${hasActivity ? `<div class="alert aa" style="margin-bottom:0">⚠ This member has recorded activity this cycle. Consider using "Start New Cycle" instead of deleting mid-cycle.</div>` : ""}`;
   document.getElementById("del-mem-mo").classList.add("open");
@@ -271,16 +271,73 @@ function loadState() {
     return null;
   }
 }
+// ═══ UNDO / REDO ═════════════════════════════════════════════
+// Actions mutate `state` in place and then call saveState(), so the
+// snapshot to undo to is the last state we saved or received.
+const HISTORY_LIMIT = 50;
+let undoStack = [];
+let redoStack = [];
+let lastSaved = null; // JSON of the last saved/loaded state
+
 async function saveState() {
+  const now = JSON.stringify(state);
+  if (lastSaved !== null && lastSaved !== now) {
+    undoStack.push(lastSaved);
+    if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+    redoStack = [];
+  }
+  await writeState(now);
+}
+async function writeState(json) {
+  lastSaved = json;
   showSync(true);
   try {
-    await setDoc(STATE_DOC, { data: JSON.stringify(state) });
+    await setDoc(STATE_DOC, { data: json });
   } catch (e) {
     alert("Save failed: " + e.message);
   }
   showSync(false);
   renderAll();
 }
+async function undo() {
+  if (!isAdmin || !undoStack.length) return;
+  redoStack.push(JSON.stringify(state));
+  state = JSON.parse(undoStack.pop());
+  await writeState(JSON.stringify(state));
+}
+window.undo = undo;
+async function redo() {
+  if (!isAdmin || !redoStack.length) return;
+  undoStack.push(JSON.stringify(state));
+  state = JSON.parse(redoStack.pop());
+  await writeState(JSON.stringify(state));
+}
+window.redo = redo;
+function renderUndoRedo() {
+  const u = document.getElementById("undo-btn"),
+    r = document.getElementById("redo-btn");
+  u.disabled = !undoStack.length;
+  r.disabled = !redoStack.length;
+}
+document.addEventListener("keydown", (e) => {
+  if (!isAdmin || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+  // Leave native text undo alone while typing in a visible field
+  // (a closed modal's input can keep focus while hidden)
+  const t = e.target;
+  if (
+    t.matches?.("input, textarea, select, [contenteditable]") &&
+    t.getClientRects().length
+  )
+    return;
+  const k = e.key.toLowerCase();
+  if (k === "z" && !e.shiftKey) {
+    e.preventDefault();
+    undo();
+  } else if (k === "y" || (k === "z" && e.shiftKey)) {
+    e.preventDefault();
+    redo();
+  }
+});
 function showSync(on) {
   document.getElementById("sync-indicator").classList.toggle("show", on);
 }
@@ -405,6 +462,7 @@ function renderTab(t) {
 }
 function renderAll() {
   if (!state) return;
+  renderUndoRedo();
   const grace = isGracePeriod();
   const complete = isCycleComplete();
   document.getElementById("hweek").textContent =
@@ -1117,6 +1175,7 @@ onSnapshot(
 
     if (!appReady) {
       state = incoming;
+      lastSaved = JSON.stringify(incoming);
       appReady = true;
       document.getElementById("loading-screen").classList.add("gone");
       document.getElementById("auth-screen").classList.remove("gone");
@@ -1124,6 +1183,12 @@ onSnapshot(
     } else {
       const a = JSON.stringify(incoming),
         b = JSON.stringify(state);
+      if (a !== lastSaved) {
+        // Another device changed the data; our history no longer applies
+        undoStack = [];
+        redoStack = [];
+      }
+      lastSaved = a;
       if (a !== b) {
         state = incoming;
         renderAll();
