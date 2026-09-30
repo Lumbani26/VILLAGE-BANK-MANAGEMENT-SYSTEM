@@ -1,0 +1,37 @@
+rules_version = '2';
+
+// Deploy with: firebase deploy --only firestore:rules
+// (or paste into Firebase console > Firestore Database > Rules)
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // The whole bank ledger is one JSON string in bank/state.
+    // Anyone may read it (the app has a read-only viewer mode);
+    // only admins may write, and only in the expected shape.
+    match /bank/state {
+      allow read: if true;
+      allow write: if isAdmin()
+        && request.resource.data.keys().hasOnly(['data'])
+        && request.resource.data.data is string
+        && request.resource.data.data.size() < 900000;
+    }
+
+    // Admin list. Managed from the Firebase console only.
+    // Each signed-in user may check whether they themselves are an admin.
+    match /admins/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // Everything else, including the old bank/config password hash,
+    // is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

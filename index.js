@@ -6,6 +6,16 @@ import {
   setDoc,
   getDoc,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+  sendPasswordResetEmail,
+  reauthenticateWithCredential,
+  updatePassword,
+  EmailAuthProvider,
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAll-aUKRP_w7lhvEx4tUfrMNVdIRzbRrU",
@@ -17,8 +27,8 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
 const STATE_DOC = doc(db, "bank", "state");
-const CFG_DOC = doc(db, "bank", "config");
 
 // ═══ CYCLE RULES ═════════════════════════════════════════════
 const CONTRIBUTION = 10000; // weekly contribution amount
@@ -29,43 +39,83 @@ const GRACE_WEEKS = 5; // grace period: weeks 21–25
 const TOTAL_WEEKS = ACTIVE_WEEKS + GRACE_WEEKS; // 25
 const INTEREST = 0.3;
 const LOAN_WEEKS = 5;
-const DEFAULT_HASH =
-  "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"; // admin123
 
 // ═══ AUTH ════════════════════════════════════════════════════
+// Admins sign in with Firebase Auth (email + password). A user is an admin
+// only if a document exists at admins/{uid}; firestore.rules enforces the
+// same check on every write, so this flag only controls what the UI shows.
 let isAdmin = false;
 let state = null;
 // let appReady = false;
 
-async function sha256(s) {
-  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
-  return Array.from(new Uint8Array(b))
-    .map((x) => x.toString(16).padStart(2, "0"))
-    .join("");
-}
-async function storedHash() {
+async function checkAdmin(user) {
+  if (!user) return false;
   try {
-    const s = await getDoc(CFG_DOC);
-    return s.exists() ? s.data().pwHash || DEFAULT_HASH : DEFAULT_HASH;
+    return (await getDoc(doc(db, "admins", user.uid))).exists();
   } catch {
-    return DEFAULT_HASH;
+    return false;
+  }
+}
+function authMessage(e) {
+  switch (e && e.code) {
+    case "auth/invalid-credential":
+    case "auth/invalid-login-credentials":
+    case "auth/wrong-password":
+    case "auth/user-not-found":
+    case "auth/invalid-email":
+      return "Incorrect email or password.";
+    case "auth/too-many-requests":
+      return "Too many attempts. Try again later.";
+    case "auth/network-request-failed":
+      return "Network error. Check your connection.";
+    default:
+      return (e && e.message) || "Sign-in failed.";
   }
 }
 async function doLogin() {
-  const pw = document.getElementById("auth-pw").value.trim();
-  if (!pw) {
+  const email = document.getElementById("auth-email").value.trim(),
+    pw = document.getElementById("auth-pw").value,
+    err = document.getElementById("auth-err");
+  if (!email && !pw) {
     asViewer();
     return;
   }
-  const [h, stored] = await Promise.all([sha256(pw), storedHash()]);
-  if (h === stored) {
+  if (!email || !pw) {
+    err.textContent = "Enter both email and password.";
+    return;
+  }
+  err.textContent = "";
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email, pw);
+    if (!(await checkAdmin(cred.user))) {
+      await signOut(auth);
+      err.textContent = "This account is not an admin.";
+      return;
+    }
     isAdmin = true;
+    document.getElementById("auth-pw").value = "";
     document.getElementById("auth-screen").classList.add("gone");
     applyRole();
-  } else
-    document.getElementById("auth-err").textContent = "Incorrect password.";
+  } catch (e) {
+    err.textContent = authMessage(e);
+  }
 }
 window.doLogin = doLogin;
+async function doResetPw() {
+  const email = document.getElementById("auth-email").value.trim(),
+    err = document.getElementById("auth-err");
+  if (!email) {
+    err.textContent = "Enter your email first.";
+    return;
+  }
+  try {
+    await sendPasswordResetEmail(auth, email);
+    err.textContent = "If that account exists, a reset email is on its way.";
+  } catch (e) {
+    err.textContent = authMessage(e);
+  }
+}
+window.doResetPw = doResetPw;
 function asViewer() {
   isAdmin = false;
   document.getElementById("auth-screen").classList.add("gone");
@@ -76,11 +126,14 @@ function showAuth() {
   document.getElementById("auth-pw").value = "";
   document.getElementById("auth-err").textContent = "";
   document.getElementById("auth-screen").classList.remove("gone");
-  setTimeout(() => document.getElementById("auth-pw").focus(), 80);
+  setTimeout(() => document.getElementById("auth-email").focus(), 80);
 }
 window.showAuth = showAuth;
-function lockApp() {
+async function lockApp() {
   isAdmin = false;
+  try {
+    await signOut(auth);
+  } catch {}
   applyRole();
 }
 window.lockApp = lockApp;
@@ -125,20 +178,34 @@ async function savePw() {
     nw = document.getElementById("pw-new").value,
     cf = document.getElementById("pw-cf").value,
     err = document.getElementById("pw-err");
-  const [ch, stored] = await Promise.all([sha256(cur), storedHash()]);
-  if (ch !== stored) {
-    err.textContent = "Current password is wrong.";
+  const user = auth.currentUser;
+  if (!user) {
+    err.textContent = "Sign in again first.";
     return;
   }
-  if (nw.length < 4) {
-    err.textContent = "Min 4 characters.";
+  if (nw.length < 6) {
+    err.textContent = "Min 6 characters.";
     return;
   }
   if (nw !== cf) {
     err.textContent = "Passwords do not match.";
     return;
   }
-  await setDoc(CFG_DOC, { pwHash: await sha256(nw) });
+  try {
+    await reauthenticateWithCredential(
+      user,
+      EmailAuthProvider.credential(user.email, cur),
+    );
+    await updatePassword(user, nw);
+  } catch (e) {
+    err.textContent =
+      e && e.code === "auth/weak-password"
+        ? "Password is too weak."
+        : e && e.code === "auth/invalid-credential"
+          ? "Current password is wrong."
+          : authMessage(e);
+    return;
+  }
   err.textContent = "";
   closePwMo();
   ["pw-cur", "pw-new", "pw-cf"].forEach(
@@ -1097,6 +1164,37 @@ function renderShare() {
 
 // ═══ FIRESTORE LISTENER ══════════════════════════════════════
 let appReady = false;
+
+// Resolves once Firebase has restored (or not) a saved admin session, so a
+// signed-in admin who reloads the page goes straight in.
+let authSettled;
+const authReady = new Promise((r) => (authSettled = r));
+onAuthStateChanged(auth, async (user) => {
+  const admin = await checkAdmin(user);
+  if (!user) {
+    if (isAdmin) {
+      isAdmin = false;
+      if (appReady) applyRole();
+    }
+  } else if (admin && !isAdmin && appReady) {
+    // Restored session after the app was already shown.
+    isAdmin = true;
+    document.getElementById("auth-screen").classList.add("gone");
+    applyRole();
+  }
+  authSettled(admin);
+});
+async function revealApp() {
+  const admin = await authReady;
+  document.getElementById("loading-screen").classList.add("gone");
+  if (admin) {
+    isAdmin = true;
+    applyRole();
+  } else {
+    document.getElementById("auth-screen").classList.remove("gone");
+    setTimeout(() => document.getElementById("auth-email").focus(), 100);
+  }
+}
 onSnapshot(
   STATE_DOC,
   (snap) => {
@@ -1118,9 +1216,7 @@ onSnapshot(
     if (!appReady) {
       state = incoming;
       appReady = true;
-      document.getElementById("loading-screen").classList.add("gone");
-      document.getElementById("auth-screen").classList.remove("gone");
-      setTimeout(() => document.getElementById("auth-pw").focus(), 100);
+      revealApp();
     } else {
       const a = JSON.stringify(incoming),
         b = JSON.stringify(state);
