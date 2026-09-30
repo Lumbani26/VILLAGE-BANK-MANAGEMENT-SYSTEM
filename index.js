@@ -5,6 +5,7 @@ import {
   onSnapshot,
   setDoc,
   getDoc,
+  runTransaction,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -35,6 +36,9 @@ const DEFAULT_HASH =
 // ═══ AUTH ════════════════════════════════════════════════════
 let isAdmin = false;
 let state = null;
+// Version of the Firestore state doc that `state` was loaded from.
+// A save only goes through if the doc is still at this version.
+let stateVersion = 0;
 // let appReady = false;
 
 async function sha256(s) {
@@ -271,15 +275,39 @@ function loadState() {
     return null;
   }
 }
+class SaveConflict extends Error {}
 async function saveState() {
   showSync(true);
+  const data = JSON.stringify(state);
+  const expected = stateVersion;
   try {
-    await setDoc(STATE_DOC, { data: JSON.stringify(state) });
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(STATE_DOC);
+      if (snapshotVersion(snap) !== expected) throw new SaveConflict();
+      tx.set(STATE_DOC, { data, version: expected + 1 });
+    });
+    stateVersion = expected + 1;
   } catch (e) {
-    alert("Save failed: " + e.message);
+    if (e instanceof SaveConflict) {
+      await reloadState();
+      alert(
+        "Another admin saved changes just before you, so your last change was NOT saved.\n\nThe latest data has been loaded. Please check it and redo your change if it is still needed.",
+      );
+    } else {
+      await reloadState();
+      alert("Save failed, your last change was NOT saved: " + e.message);
+    }
   }
   showSync(false);
   renderAll();
+}
+// Replace local state with what is in Firestore, dropping unsaved edits.
+async function reloadState() {
+  try {
+    applySnapshot(await getDoc(STATE_DOC));
+  } catch {
+    // Keep local state; the live listener will catch up when online.
+  }
 }
 function showSync(on) {
   document.getElementById("sync-indicator").classList.toggle("show", on);
@@ -1097,37 +1125,45 @@ function renderShare() {
 
 // ═══ FIRESTORE LISTENER ══════════════════════════════════════
 let appReady = false;
+function parseSnapshot(snap) {
+  const incoming = snap.exists()
+    ? (() => {
+        try {
+          return JSON.parse(snap.data().data);
+        } catch {
+          return freshState();
+        }
+      })()
+    : freshState();
+  // Ensure seedPaid exists for older data
+  if (!incoming.seedPaid) incoming.seedPaid = {};
+  incoming.members.forEach((m) => {
+    if (incoming.seedPaid[m.id] === undefined) incoming.seedPaid[m.id] = 0;
+  });
+  return incoming;
+}
+function snapshotVersion(snap) {
+  return snap.exists() ? snap.data().version || 0 : 0;
+}
+// Take a snapshot as the new local state. Returns true if the data changed.
+function applySnapshot(snap) {
+  const incoming = parseSnapshot(snap);
+  stateVersion = snapshotVersion(snap);
+  if (state && JSON.stringify(incoming) === JSON.stringify(state)) return false;
+  state = incoming;
+  return true;
+}
 onSnapshot(
   STATE_DOC,
   (snap) => {
-    const incoming = snap.exists()
-      ? (() => {
-          try {
-            return JSON.parse(snap.data().data);
-          } catch {
-            return freshState();
-          }
-        })()
-      : freshState();
-    // Ensure seedPaid exists for older data
-    if (!incoming.seedPaid) incoming.seedPaid = {};
-    incoming.members.forEach((m) => {
-      if (incoming.seedPaid[m.id] === undefined) incoming.seedPaid[m.id] = 0;
-    });
-
     if (!appReady) {
-      state = incoming;
+      applySnapshot(snap);
       appReady = true;
       document.getElementById("loading-screen").classList.add("gone");
       document.getElementById("auth-screen").classList.remove("gone");
       setTimeout(() => document.getElementById("auth-pw").focus(), 100);
-    } else {
-      const a = JSON.stringify(incoming),
-        b = JSON.stringify(state);
-      if (a !== b) {
-        state = incoming;
-        renderAll();
-      }
+    } else if (applySnapshot(snap)) {
+      renderAll();
     }
   },
   (err) => {
