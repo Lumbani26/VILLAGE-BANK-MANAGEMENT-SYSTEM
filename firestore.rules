@@ -16,8 +16,10 @@ service cloud.firestore {
     match /bank/state {
       allow read: if true;
       allow write: if isAdmin()
-        && request.resource.data.keys().hasOnly(['data'])
+        && request.resource.data.keys().hasOnly(['data', 'version'])
         && request.resource.data.data is string
+        && (!('version' in request.resource.data)
+            || request.resource.data.version is int)
         && request.resource.data.data.size() < 900000;
     }
 
