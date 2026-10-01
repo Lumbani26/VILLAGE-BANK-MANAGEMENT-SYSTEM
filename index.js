@@ -21,14 +21,30 @@ const STATE_DOC = doc(db, "bank", "state");
 const CFG_DOC = doc(db, "bank", "config");
 
 // ═══ CYCLE RULES ═════════════════════════════════════════════
-const CONTRIBUTION = 10000; // weekly contribution amount
-const SEED_AMOUNT = 100000; // seed per member
-const SEED_DUE_WEEK = 6; // seed must be paid back by week 6
-const ACTIVE_WEEKS = 20; // contributions & loans: weeks 1–20
-const GRACE_WEEKS = 5; // grace period: weeks 21–25
-const TOTAL_WEEKS = ACTIVE_WEEKS + GRACE_WEEKS; // 25
-const INTEREST = 0.3;
-const LOAN_WEEKS = 5;
+// Defaults; the admin can change them from the Rules dialog and the
+// values are stored in state.rules so every device sees the same rules.
+const DEFAULT_RULES = {
+  contribution: 10000, // weekly contribution amount
+  seedAmount: 100000, // seed per member
+  seedDueWeek: 1, // seed is due on the first day of the cycle
+  activeWeeks: 20, // contributions & loans: weeks 1..activeWeeks
+  graceWeeks: 5, // grace period after the active weeks
+  interest: 0.3, // loan interest (30%)
+  loanWeeks: 6, // loans are repaid in the 6th week after collection
+  minLoan: 1000000, // minimum loan each member must take per cycle
+};
+function rules() {
+  return { ...DEFAULT_RULES, ...(state?.rules || {}) };
+}
+const MIN_LOAN_NOTE = "Minimum loan shortfall";
+function totalWeeks() {
+  return rules().activeWeeks + rules().graceWeeks;
+}
+// Contribution amount that applied in a given week (rule changes only
+// affect weeks that start after the change)
+function contribFor(w) {
+  return state.weekAmounts?.[w] ?? rules().contribution;
+}
 const DEFAULT_HASH =
   "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"; // admin123
 
@@ -55,6 +71,11 @@ async function doLogin() {
   const pw = document.getElementById("auth-pw").value.trim();
   if (!pw) {
     asViewer();
+    return;
+  }
+  if (!serverSynced) {
+    document.getElementById("auth-err").textContent =
+      "Still connecting to the server. Try again in a moment.";
     return;
   }
   const [h, stored] = await Promise.all([sha256(pw), storedHash()]);
@@ -176,6 +197,7 @@ async function doClear() {
     members: keptMembers,
     contributions: newContribs,
     seedPaid: newSeedPaid,
+    rules: state.rules || { ...DEFAULT_RULES },
   };
   await saveState();
   closeClearMo();
@@ -194,7 +216,7 @@ function openDeleteMember(id) {
     Object.keys(state.contributions[id] || {}).length > 0;
   document.getElementById("del-mem-body").innerHTML = `
     <div style="background:var(--r50);border:1px solid var(--r600);border-radius:var(--rads);padding:12px;margin-bottom:14px;font-size:13px;color:var(--r600)">
-      Removes <strong>${m.name}</strong> and all their loan and contribution records. This cannot be undone.
+      Removes <strong>${m.name}</strong> and all their loan and contribution records. You can reverse this with Undo.
     </div>
     ${hasActivity ? `<div class="alert aa" style="margin-bottom:0">⚠ This member has recorded activity this cycle. Consider using "Start New Cycle" instead of deleting mid-cycle.</div>` : ""}`;
   document.getElementById("del-mem-mo").classList.add("open");
@@ -215,6 +237,163 @@ async function confirmDeleteMember() {
   await saveState();
 }
 window.confirmDeleteMember = confirmDeleteMember;
+
+// ═══ RULES (admin-adjustable) ════════════════════════════════
+const RULE_FIELDS = [
+  ["contribution", "Weekly contribution (MWK)", 1, 1],
+  ["seedAmount", "Seed per member (MWK)", 1, 1],
+  ["seedDueWeek", "Seed due by week", 1, 1],
+  ["activeWeeks", "Active weeks (contributions & loans)", 1, 1],
+  ["graceWeeks", "Grace weeks (repayments only)", 0, 1],
+  ["interest", "Loan interest (%)", 0, 0.1],
+  ["loanWeeks", "Loan duration (weeks)", 1, 1],
+  ["minLoan", "Minimum loan per member per cycle (MWK, 0 = none)", 0, 1000],
+];
+function openRulesMo() {
+  if (!isAdmin) return;
+  const r = rules();
+  document.getElementById("rules-body").innerHTML = RULE_FIELDS.map(
+    ([k, label, min, step]) =>
+      `<div class="fg"><label>${label}</label><input type="number" id="rule-${k}" min="${min}" step="${step}" value="${k === "interest" ? +(r[k] * 100).toFixed(2) : r[k]}"></div>`,
+  ).join("");
+  document.getElementById("rules-mo").classList.add("open");
+}
+window.openRulesMo = openRulesMo;
+function closeRulesMo() {
+  document.getElementById("rules-mo").classList.remove("open");
+}
+window.closeRulesMo = closeRulesMo;
+async function saveRules() {
+  if (!isAdmin) return;
+  const next = {};
+  for (const [k, label, min] of RULE_FIELDS) {
+    const v = parseFloat(document.getElementById("rule-" + k).value);
+    if (!Number.isFinite(v) || v < min) {
+      alert(`${label}: enter a value of at least ${min}.`);
+      return;
+    }
+    next[k] = k === "interest" ? v / 100 : v;
+  }
+  if (
+    next.activeWeeks < state.currentWeek &&
+    !confirm(
+      `The cycle is already at Week ${state.currentWeek}. With ${next.activeWeeks} active weeks it will count as grace period. Continue?`,
+    )
+  )
+    return;
+  state.rules = next;
+  closeRulesMo();
+  await saveState();
+}
+window.saveRules = saveRules;
+
+// ═══ BANK RECONCILIATION ═════════════════════════════════════
+// The books say what the pool should be; the bank may differ because of
+// charges or interest. Each adjustment is logged and flows into the pool
+// (and therefore the member payouts). The statement balance is a separate
+// figure used only to show what is still unexplained.
+function bankAdjTotal() {
+  return (state.bank?.adjustments || []).reduce((s, a) => s + a.amount, 0);
+}
+function signedFmt(n) {
+  return (Math.round(n) < 0 ? "-" : "") + fmt(Math.abs(n));
+}
+function openBankMo() {
+  if (!isAdmin) return;
+  document.getElementById("bank-stmt").value = state.bank.statement ?? "";
+  document.getElementById("bank-adj-amt").value = "";
+  document.getElementById("bank-adj-note").value = "";
+  document.getElementById("bank-adj-type").value = "charge";
+  document.getElementById("bank-log").innerHTML = bankLogHtml();
+  document.getElementById("bank-mo").classList.add("open");
+}
+window.openBankMo = openBankMo;
+function closeBankMo() {
+  document.getElementById("bank-mo").classList.remove("open");
+}
+window.closeBankMo = closeBankMo;
+async function saveBankStatement() {
+  if (!isAdmin) return;
+  const raw = document.getElementById("bank-stmt").value.trim();
+  const v = raw === "" ? null : parseFloat(raw);
+  if (raw !== "" && !Number.isFinite(v)) {
+    alert("Enter a valid balance.");
+    return;
+  }
+  state.bank.statement = v;
+  await saveState();
+  document.getElementById("bank-log").innerHTML = bankLogHtml();
+}
+window.saveBankStatement = saveBankStatement;
+async function addBankAdjustment() {
+  if (!isAdmin) return;
+  const amt = parseFloat(document.getElementById("bank-adj-amt").value);
+  if (!amt || amt <= 0) {
+    alert("Enter an amount greater than zero.");
+    return;
+  }
+  const charge = document.getElementById("bank-adj-type").value === "charge";
+  state.bank.adjustments.push({
+    id: Date.now(),
+    date: new Date().toISOString().slice(0, 10),
+    amount: charge ? -amt : amt,
+    note:
+      document.getElementById("bank-adj-note").value.trim() ||
+      (charge ? "Bank charge" : "Bank interest"),
+  });
+  document.getElementById("bank-adj-amt").value = "";
+  document.getElementById("bank-adj-note").value = "";
+  await saveState();
+  document.getElementById("bank-log").innerHTML = bankLogHtml();
+}
+window.addBankAdjustment = addBankAdjustment;
+async function removeBankAdjustment(id) {
+  if (!isAdmin) return;
+  state.bank.adjustments = state.bank.adjustments.filter((a) => a.id !== id);
+  await saveState();
+  document.getElementById("bank-log").innerHTML = bankLogHtml();
+}
+window.removeBankAdjustment = removeBankAdjustment;
+function bankLogHtml() {
+  const a = state.bank.adjustments;
+  if (!a.length) return '<div class="empty" style="padding:14px">No adjustments yet.</div>';
+  return `<div class="tw"><table><tbody>${a
+    .map(
+      (x) =>
+        `<tr><td>${x.date}</td><td>${x.note}</td><td style="color:${x.amount < 0 ? "var(--r600)" : "var(--g600)"}">${signedFmt(x.amount)}</td><td><button class="red sm" onclick="removeBankAdjustment(${x.id})">Remove</button></td></tr>`,
+    )
+    .join("")}</tbody></table></div>`;
+}
+// A loan is cash-backed if it was issued manually, or is a rollover of one
+function isCashLoan(l) {
+  for (let i = 0; i < 50 && l; i++) {
+    if (l.note === "Manual loan") return true;
+    const m = /^Rollover from loan #(\d+)$/.exec(l.note || "");
+    if (!m) return false;
+    l = state.loans.find((x) => x.id === +m[1]);
+  }
+  return false;
+}
+function renderBank() {
+  const b = state.bank;
+  // only loans actually paid out in cash leave the bank; automatic loans
+  // (missed seed/contributions, minimum-loan shortfall) never did
+  const out = state.loans
+    .filter((l) => l.status === "active" && isCashLoan(l))
+    .reduce((s, l) => s + loanOutstanding(l), 0);
+  // cash that should be in the bank = pool (incl. adjustments) less money still lent out
+  const expected = poolTotal() - out;
+  const diff = b.statement === null ? null : b.statement - expected;
+  const ok = diff !== null && Math.round(diff) === 0;
+  document.getElementById("bank-card").innerHTML = `
+    <div class="sh"><span class="st">Bank reconciliation</span><button class="ao sec" onclick="openBankMo()">Update</button></div>
+    <div class="sgrid" style="margin-bottom:0">
+      <div class="scard"><div class="slabel">Expected in bank</div><div class="sval">${fmt(expected)}</div></div>
+      <div class="scard"><div class="slabel">Charges / interest</div><div class="sval">${signedFmt(bankAdjTotal())}</div></div>
+      <div class="scard"><div class="slabel">Statement balance</div><div class="sval">${b.statement === null ? "Not set" : fmt(b.statement)}</div></div>
+      <div class="scard"><div class="slabel">Unexplained</div><div class="sval" style="color:${diff === null ? "inherit" : ok ? "var(--g600)" : "var(--r600)"}">${diff === null ? "—" : ok ? "Balanced" : signedFmt(diff)}</div></div>
+    </div>`;
+}
 
 // ═══ COMMENCEMENT DATE ═══════════════════════════════════════
 function openDateMo() {
@@ -261,31 +440,83 @@ function freshState() {
     seedPaid: {},
     nextLoanId: 1,
     commenceDate: "",
+    rules: { ...DEFAULT_RULES },
+    weekAmounts: {},
+    bank: { statement: null, adjustments: [] },
   };
 }
-function loadState() {
-  try {
-    const s = localStorage.getItem("vb_v5");
-    return s ? JSON.parse(s) : null;
-  } catch {
-    return null;
-  }
-}
+// ═══ UNDO / REDO ═════════════════════════════════════════════
+// Actions mutate `state` in place and then call saveState(), so the
+// snapshot to undo to is the last state we saved or received.
+const HISTORY_LIMIT = 50;
+let undoStack = [];
+let redoStack = [];
+let lastSaved = null; // JSON of the last saved/loaded state
+
 async function saveState() {
+  const now = JSON.stringify(state);
+  if (lastSaved !== null && lastSaved !== now) {
+    undoStack.push(lastSaved);
+    if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+    redoStack = [];
+  }
+  await writeState(now);
+}
+async function writeState(json) {
+  lastSaved = json;
   showSync(true);
   try {
-    await setDoc(STATE_DOC, { data: JSON.stringify(state) });
+    await setDoc(STATE_DOC, { data: json });
   } catch (e) {
     alert("Save failed: " + e.message);
   }
   showSync(false);
   renderAll();
 }
+async function undo() {
+  if (!isAdmin || !undoStack.length) return;
+  redoStack.push(JSON.stringify(state));
+  state = JSON.parse(undoStack.pop());
+  await writeState(JSON.stringify(state));
+}
+window.undo = undo;
+async function redo() {
+  if (!isAdmin || !redoStack.length) return;
+  undoStack.push(JSON.stringify(state));
+  state = JSON.parse(redoStack.pop());
+  await writeState(JSON.stringify(state));
+}
+window.redo = redo;
+function renderUndoRedo() {
+  document.getElementById("undo-btn").disabled = !undoStack.length;
+  document.getElementById("redo-btn").disabled = !redoStack.length;
+}
+document.addEventListener("keydown", (e) => {
+  if (!isAdmin || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+  // Leave native text undo alone while typing in a visible field
+  const t = e.target;
+  if (
+    t.matches?.("input, textarea, select, [contenteditable]") &&
+    t.getClientRects().length
+  )
+    return;
+  const k = e.key.toLowerCase();
+  if (k === "z" && !e.shiftKey) {
+    e.preventDefault();
+    undo();
+  } else if (k === "y" || (k === "z" && e.shiftKey)) {
+    e.preventDefault();
+    redo();
+  }
+});
 function showSync(on) {
   document.getElementById("sync-indicator").classList.toggle("show", on);
 }
 
 // ═══ HELPERS ═════════════════════════════════════════════════
+function shortAmt(n) {
+  return n >= 1000 ? n / 1000 + "k" : String(n);
+}
 function fmt(n) {
   return "MWK " + Math.round(n).toLocaleString();
 }
@@ -293,10 +524,15 @@ function getMember(id) {
   return state.members.find((m) => m.id === id);
 }
 function seedTotal() {
-  return SEED_AMOUNT * state.members.length;
+  return rules().seedAmount * state.members.length;
+}
+// Each loan keeps the rate it was issued at, so changing the rule later
+// does not alter existing loans.
+function loanRate(l) {
+  return l.rate ?? rules().interest;
 }
 function loanTotalDue(l) {
-  return l.principal * (1 + INTEREST);
+  return l.principal * (1 + loanRate(l));
 }
 function loanRepaid(l) {
   return l.repayments.reduce((s, r) => s + r.amount, 0);
@@ -311,16 +547,16 @@ function memberBalance(mid) {
   return memberActiveLoans(mid).reduce((s, l) => s + loanOutstanding(l), 0);
 }
 function isGracePeriod() {
-  return state.currentWeek > ACTIVE_WEEKS;
+  return state.currentWeek > rules().activeWeeks;
 }
 function isCycleComplete() {
-  return state.currentWeek >= TOTAL_WEEKS;
+  return state.currentWeek >= totalWeeks();
 }
 
 function totalContribs() {
   let t = 0;
   state.members.forEach((m) => {
-    for (let w = 1; w <= Math.min(state.currentWeek, ACTIVE_WEEKS); w++)
+    for (let w = 1; w <= Math.min(state.currentWeek, rules().activeWeeks); w++)
       t += state.contributions[m.id]?.[w] || 0;
   });
   return t;
@@ -336,20 +572,20 @@ function totalInterest() {
   let t = 0;
   state.loans.forEach((l) => {
     const rep = loanRepaid(l);
-    if (l.status === "paid") t += l.principal * INTEREST;
+    if (l.status === "paid") t += l.principal * loanRate(l);
     else t += Math.max(0, rep - l.principal);
   });
   return t;
 }
 function poolTotal() {
-  return seedTotal() + totalContribs() + totalInterest();
+  return seedTotal() + totalContribs() + totalInterest() + bankAdjTotal();
 }
 
 // Overpayment: total paid by member minus what they owe
 function memberTotalPaid(mid) {
   let paid = 0;
   // contributions
-  for (let w = 1; w <= ACTIVE_WEEKS; w++)
+  for (let w = 1; w <= rules().activeWeeks; w++)
     paid += state.contributions[mid]?.[w] || 0;
   // seed repayment
   paid += state.seedPaid[mid] || 0;
@@ -361,10 +597,11 @@ function memberTotalPaid(mid) {
 }
 function memberTotalOwed(mid) {
   // contributions expected
-  const weeksActive = Math.min(state.currentWeek, ACTIVE_WEEKS);
-  let owed = weeksActive * CONTRIBUTION;
+  const weeksActive = Math.min(state.currentWeek, rules().activeWeeks);
+  let owed = 0;
+  for (let w = 1; w <= weeksActive; w++) owed += contribFor(w);
   // seed
-  owed += SEED_AMOUNT;
+  owed += rules().seedAmount;
   // loans total due (all loans ever taken)
   state.loans
     .filter((l) => l.memberId === mid)
@@ -376,9 +613,9 @@ function memberOverpayment(mid) {
 }
 function memberMissed(mid) {
   let m = 0;
-  for (let w = 1; w <= Math.min(state.currentWeek, ACTIVE_WEEKS); w++) {
+  for (let w = 1; w <= Math.min(state.currentWeek, rules().activeWeeks); w++) {
     const p = state.contributions[mid]?.[w] || 0;
-    if (p < CONTRIBUTION) m += CONTRIBUTION - p;
+    if (p < contribFor(w)) m += contribFor(w) - p;
   }
   return m;
 }
@@ -405,11 +642,14 @@ function renderTab(t) {
 }
 function renderAll() {
   if (!state) return;
+  renderUndoRedo();
   const grace = isGracePeriod();
   const complete = isCycleComplete();
   document.getElementById("hweek").textContent =
-    `Week ${state.currentWeek} of ${ACTIVE_WEEKS}${grace ? " (Grace)" : ""}`;
+    `Week ${state.currentWeek} of ${rules().activeWeeks}${grace ? " (Grace)" : ""}`;
   document.getElementById("d-nextw").textContent = state.currentWeek + 1;
+  document.getElementById("grace-banner").innerHTML =
+    `<strong>Grace Period (Weeks ${rules().activeWeeks + 1}–${totalWeeks()}):</strong> No new contributions or loans. All outstanding balances must be repaid before Week ${totalWeeks()}.`;
   document.getElementById("grace-badge").style.display = grace ? "" : "none";
   document.getElementById("grace-banner").style.display =
     grace && !complete ? "block" : "none";
@@ -453,6 +693,9 @@ async function advanceWeek() {
   }
   state.currentWeek++;
   viewedWeek = state.currentWeek;
+  state.weekAmounts = state.weekAmounts || {};
+  if (state.weekAmounts[state.currentWeek] === undefined)
+    state.weekAmounts[state.currentWeek] = rules().contribution;
   const grace = isGracePeriod();
 
   if (!grace) {
@@ -460,20 +703,32 @@ async function advanceWeek() {
     state.members.forEach((m) => {
       // Missed weekly contribution → auto loan
       const paid = state.contributions[m.id]?.[state.currentWeek] || 0;
-      if (paid < CONTRIBUTION)
+      if (paid < contribFor(state.currentWeek))
         mkLoan(
           m.id,
-          CONTRIBUTION - paid,
+          contribFor(state.currentWeek) - paid,
           `Missed contribution Wk${state.currentWeek}`,
         );
 
       // Seed due by week 5: if not paid in full → auto loan
-      if (state.currentWeek === SEED_DUE_WEEK) {
+      if (state.currentWeek === rules().seedDueWeek) {
         const seedRepaid = state.seedPaid[m.id] || 0;
-        const seedOwed = SEED_AMOUNT - seedRepaid;
+        const seedOwed = rules().seedAmount - seedRepaid;
         if (seedOwed > 0)
-          mkLoan(m.id, seedOwed, `Seed repayment due Wk${SEED_DUE_WEEK}`);
+          mkLoan(m.id, seedOwed, `Seed repayment due Wk${rules().seedDueWeek}`);
       }
+    });
+  }
+
+  // End of the active weeks: members who never took the minimum loan are
+  // treated as having taken the shortfall (interest still payable)
+  if (state.currentWeek === rules().activeWeeks + 1 && rules().minLoan > 0) {
+    state.members.forEach((m) => {
+      const taken = state.loans
+        .filter((l) => l.memberId === m.id && l.note === "Manual loan")
+        .reduce((t, l) => t + l.principal, 0);
+      const ln = mkLoan(m.id, rules().minLoan - taken, MIN_LOAN_NOTE);
+      if (ln) ln.due_week = totalWeeks();
     });
   }
 
@@ -512,7 +767,8 @@ async function rollBackWeek() {
     if (ln.issued_week === w) {
       if (
         ln.note === `Missed contribution Wk${w}` ||
-        ln.note === `Seed repayment due Wk${SEED_DUE_WEEK}` ||
+        ln.note === `Seed repayment due Wk${rules().seedDueWeek}` ||
+        ln.note === MIN_LOAN_NOTE ||
         ln.note.startsWith("Rollover from loan #")
       )
         toRemove.add(ln.id);
@@ -527,6 +783,7 @@ async function rollBackWeek() {
     }
   });
   state.loans = state.loans.filter((ln) => !toRemove.has(ln.id));
+  delete state.weekAmounts?.[state.currentWeek];
   state.currentWeek--;
   viewedWeek = Math.max(1, state.currentWeek);
   await saveState();
@@ -534,17 +791,20 @@ async function rollBackWeek() {
 window.rollBackWeek = rollBackWeek;
 
 function mkLoan(memberId, principal, note) {
-  if (principal <= 0) return;
-  state.loans.push({
+  if (principal <= 0) return null;
+  const loan = {
     id: state.nextLoanId++,
     memberId,
     principal,
     issued_week: state.currentWeek,
-    due_week: state.currentWeek + LOAN_WEEKS,
+    due_week: state.currentWeek + rules().loanWeeks,
+    rate: rules().interest,
     status: "active",
     note: note || "",
     repayments: [],
-  });
+  };
+  state.loans.push(loan);
+  return loan;
 }
 
 // ═══ DASHBOARD ═══════════════════════════════════════════════
@@ -552,14 +812,16 @@ function renderDash() {
   const n = state.members.length;
   const aLoans = state.loans.filter((l) => l.status === "active");
   const totalOwed = aLoans.reduce((s, l) => s + loanOutstanding(l), 0);
+  renderBank();
   const grace = isGracePeriod();
   document.getElementById("d-stats").innerHTML = `
     <div class="scard"><div class="slabel">Total Pool</div><div class="sval">${fmt(poolTotal())}</div></div>
-    <div class="scard"><div class="slabel">Seed (${n}×100k)</div><div class="sval">${fmt(seedTotal())}</div></div>
+    <div class="scard"><div class="slabel">Seed (${n}×${shortAmt(rules().seedAmount)})</div><div class="sval">${fmt(seedTotal())}</div></div>
     <div class="scard"><div class="slabel">Contributions</div><div class="sval">${fmt(totalContribs())}</div></div>
     <div class="scard"><div class="slabel">Interest Earned</div><div class="sval">${fmt(totalInterest())}</div></div>
     <div class="scard"><div class="slabel">Outstanding Loans</div><div class="sval">${fmt(totalOwed)}</div></div>
-    <div class="scard"><div class="slabel">Members</div><div class="sval">${n}</div></div>`;
+    <div class="scard"><div class="slabel">Members</div><div class="sval">${n}</div></div>
+    <div class="scard"><div class="slabel">Bank Charges / Interest</div><div class="sval">${signedFmt(bankAdjTotal())}</div></div>`;
 
   let alerts = "";
   if (state.currentWeek === 0)
@@ -568,18 +830,18 @@ function renderDash() {
   if (state.commenceDate && state.currentWeek > 0)
     alerts += `<div class="alert ag"> Week ${state.currentWeek} — ${weekDate(state.currentWeek)}</div>`;
   if (grace && !isCycleComplete())
-    alerts += `<div class="alert ap">⏳ Grace period active. Weeks ${ACTIVE_WEEKS + 1}–${TOTAL_WEEKS}. All debts must be cleared by Week ${TOTAL_WEEKS}.</div>`;
+    alerts += `<div class="alert ap">Grace period active. Weeks ${rules().activeWeeks + 1}–${totalWeeks()}. All debts must be cleared by Week ${totalWeeks()}.</div>`;
   const od = aLoans.filter((l) => l.due_week < state.currentWeek);
   if (od.length)
     alerts += `<div class="alert ar">⚠ ${od.length} loan(s) overdue — will roll over on next week advance.</div>`;
   const seedWarning = state.members.filter(
     (m) =>
-      (state.seedPaid[m.id] || 0) < SEED_AMOUNT &&
-      state.currentWeek < SEED_DUE_WEEK &&
+      (state.seedPaid[m.id] || 0) < rules().seedAmount &&
+      state.currentWeek < rules().seedDueWeek &&
       state.currentWeek > 0,
   );
   if (seedWarning.length && !grace)
-    alerts += `<div class="alert aa"> ${seedWarning.length} member(s) yet to repay their seed. Due by Week ${SEED_DUE_WEEK}.</div>`;
+    alerts += `<div class="alert aa"> ${seedWarning.length} member(s) yet to repay their seed. Due by Week ${rules().seedDueWeek}.</div>`;
   if (isCycleComplete())
     alerts +=
       '<div class="alert ag">✓ Cycle complete! See the Share tab for final distribution.</div>';
@@ -598,8 +860,8 @@ function renderDash() {
       const overdue = l.due_week < state.currentWeek;
       const rb = isAdmin
         ? `<td style="white-space:nowrap">
-      <button onclick="openRepay(${l.id})" style="padding:3px 8px;font-size:11px">Repay</button>
-      <button class="red" onclick="openDeleteLoan(${l.id})" style="padding:3px 8px;font-size:11px">Delete</button></td>`
+      <button class="sm" onclick="openRepay(${l.id})">Repay</button>
+      <button class="red sm" onclick="openDeleteLoan(${l.id})">Delete</button></td>`
         : "<td></td>";
       return `<tr><td>${m ? m.name : "?"}</td><td>${fmt(l.principal)}</td><td>${fmt(loanTotalDue(l))}</td><td>${fmt(owed)}</td><td>Wk${l.due_week}${l.due_week && state.commenceDate ? ` <span style="color:var(--tx3);font-size:11px">(${weekDate(l.due_week)})</span>` : ""}
       </td><td>${overdue ? '<span class="badge br">Overdue</span>' : '<span class="badge ba">Active</span>'}</td>${rb}</tr>`;
@@ -681,31 +943,31 @@ function renderMembers() {
       const bal = memberBalance(m.id);
       const missed = memberMissed(m.id);
       const seedPd = state.seedPaid[m.id] || 0;
-      const seedOwed = Math.max(0, SEED_AMOUNT - seedPd);
+      const seedOwed = Math.max(0, rules().seedAmount - seedPd);
       const seedBadge =
         seedOwed === 0
           ? '<span class="badge bg">Seed ✓</span>'
           : `<span class="badge ba">Seed MWK ${seedOwed.toLocaleString()} due</span>`;
       const lb =
         isAdmin && !isGracePeriod()
-          ? `<button onclick="openIssueLoan(${m.id})" style="padding:3px 8px;font-size:11px">Loan</button>`
+          ? `<button class="sm" onclick="openIssueLoan(${m.id})">Loan</button>`
           : "";
       const eb = isAdmin
-        ? `<button class="sec" onclick="openEditMember(${m.id})" style="padding:3px 8px;font-size:11px">Edit</button>`
+        ? `<button class="sec sm" onclick="openEditMember(${m.id})">Edit</button>`
         : "";
       const spb =
         isAdmin && seedOwed > 0
-          ? `<button class="sec" onclick="openSeedRepay(${m.id})" style="padding:3px 8px;font-size:11px">Seed Repay</button>`
+          ? `<button class="sec sm" onclick="openSeedRepay(${m.id})">Seed Repay</button>`
           : "";
       const db = isAdmin
-        ? `<button class="red" onclick="openDeleteMember(${m.id})" style="padding:3px 8px;font-size:11px">Delete</button>`
+        ? `<button class="red sm" onclick="openDeleteMember(${m.id})">Delete</button>`
         : "";
       return `<tr>
       <td><strong>${m.name}</strong>${m.phone ? `<br><span style="color:var(--tx3);font-size:11px">${m.phone}</span>` : ""}</td>
       <td>${seedBadge}</td>
       <td>${missed > 0 ? `<span class="badge ba">MWK ${missed.toLocaleString()} missed</span>` : '<span class="badge bg">Up to date</span>'}</td>
       <td>${bal > 0 ? `<span style="color:var(--r600);font-weight:500">${fmt(bal)}</span>` : '<span style="color:var(--g600)">None</span>'}</td>
-      <td style="white-space:nowrap"><button class="sec" onclick="viewMember(${m.id})" style="padding:3px 8px;font-size:11px">View</button> ${eb} ${spb} ${lb} ${db}</td>
+      <td style="white-space:nowrap"><button class="sec sm" onclick="viewMember(${m.id})">View</button> ${eb} ${spb} ${lb} ${db}</td>
     </tr>`;
     })
     .join("");
@@ -720,12 +982,12 @@ function openSeedRepay(mid) {
   const m = getMember(mid);
   if (!m) return;
   const seedPd = state.seedPaid[mid] || 0;
-  const seedOwed = Math.max(0, SEED_AMOUNT - seedPd);
+  const seedOwed = Math.max(0, rules().seedAmount - seedPd);
   document.getElementById("repay-mo-body").innerHTML = `
     <p style="margin-bottom:11px"><strong>${m.name}</strong> — Seed Repayment</p>
     <div style="background:var(--bg3);border-radius:var(--rads);padding:10px;font-size:13px;margin-bottom:11px">
-      Seed Amount: ${fmt(SEED_AMOUNT)}<br>Already Paid: ${fmt(seedPd)}<br><strong>Outstanding: ${fmt(seedOwed)}</strong><br>
-      <span style="color:var(--tx3);font-size:12px">Due by Week ${SEED_DUE_WEEK}${state.commenceDate ? ` (${weekDate(SEED_DUE_WEEK)})` : ""}</span></div>
+      Seed Amount: ${fmt(rules().seedAmount)}<br>Already Paid: ${fmt(seedPd)}<br><strong>Outstanding: ${fmt(seedOwed)}</strong><br>
+      <span style="color:var(--tx3);font-size:12px">Due by Week ${rules().seedDueWeek}${state.commenceDate ? ` (${weekDate(rules().seedDueWeek)})` : ""}</span></div>
     <div class="fg" style="margin-bottom:11px"><label>Amount Paid (MWK)</label><input type="number" id="r-amt" value="${Math.round(seedOwed)}" min="1"></div>
     <div class="mact"><button class="sec" onclick="closeRepayMo()">Cancel</button><button onclick="doSeedRepay(${mid})">Record</button></div>`;
   document.getElementById("repay-mo").classList.add("open");
@@ -744,7 +1006,7 @@ async function doSeedRepay(mid) {
   const idx = state.loans.findIndex(
     (l) =>
       l.memberId === mid &&
-      l.note === `Seed repayment due Wk${SEED_DUE_WEEK}` &&
+      l.note === `Seed repayment due Wk${rules().seedDueWeek}` &&
       l.status === "active" &&
       l.repayments.length === 0,
   );
@@ -759,14 +1021,14 @@ function viewMember(id) {
   if (!m) return;
   const loans = state.loans.filter((l) => l.memberId === id);
   const seedPd = state.seedPaid[id] || 0;
-  const seedOwed = Math.max(0, SEED_AMOUNT - seedPd);
+  const seedOwed = Math.max(0, rules().seedAmount - seedPd);
   let crows = "";
-  for (let w = 1; w <= Math.min(state.currentWeek, ACTIVE_WEEKS); w++) {
+  for (let w = 1; w <= Math.min(state.currentWeek, rules().activeWeeks); w++) {
     const p = state.contributions[id]?.[w] || 0;
     const dateStr = state.commenceDate
       ? ` <span style="color:var(--tx3);font-size:11px">${weekDate(w)}</span>`
       : "";
-    crows += `<tr><td>Week ${w}${dateStr}</td><td>${fmt(p)}</td><td>${p >= CONTRIBUTION ? '<span class="badge bg">Paid</span>' : '<span class="badge ba">Missed</span>'}</td></tr>`;
+    crows += `<tr><td>Week ${w}${dateStr}</td><td>${fmt(p)}</td><td>${p >= contribFor(w) ? '<span class="badge bg">Paid</span>' : '<span class="badge ba">Missed</span>'}</td></tr>`;
   }
   const lrows =
     loans
@@ -783,7 +1045,7 @@ function viewMember(id) {
   document.getElementById("mem-mo-body").innerHTML = `
     ${m.phone ? `<p style="color:var(--tx2);margin-bottom:11px">${m.phone}</p>` : ""}
     <div style="background:var(--bg3);border-radius:var(--rads);padding:12px;margin-bottom:14px;font-size:13px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div><div style="color:var(--tx3);font-size:11px;margin-bottom:2px">SEED ALLOCATED</div><strong>${fmt(SEED_AMOUNT)}</strong></div>
+      <div><div style="color:var(--tx3);font-size:11px;margin-bottom:2px">SEED ALLOCATED</div><strong>${fmt(rules().seedAmount)}</strong></div>
       <div><div style="color:var(--tx3);font-size:11px;margin-bottom:2px">SEED REPAID</div><strong>${fmt(seedPd)}</strong></div>
       <div><div style="color:var(--tx3);font-size:11px;margin-bottom:2px">SEED OUTSTANDING</div><strong style="color:${seedOwed > 0 ? "var(--r600)" : "var(--g600)"}">${fmt(seedOwed)}</strong></div>
       ${overpay > 0 ? `<div><div style="color:var(--tx3);font-size:11px;margin-bottom:2px">OVERPAYMENT</div><strong style="color:var(--g600)">${fmt(overpay)} (refund)</strong></div>` : ""}
@@ -828,7 +1090,7 @@ function openIssueLoan(presetId) {
     <div class="fg" style="margin-bottom:11px"><label>Member</label><select id="l-mem">${opts}</select></div>
     <div class="fg" style="margin-bottom:11px"><label>Loan Amount (MWK)</label><input type="number" id="l-amt" placeholder="e.g. 20000" min="100"></div>
     <div style="background:var(--b50);border-radius:var(--rads);padding:10px;font-size:12px;color:var(--b600);margin-bottom:11px">
-      30% interest · Total = Principal × 1.30 · Due: Week ${state.currentWeek + LOAN_WEEKS}${state.commenceDate ? ` (${weekDate(state.currentWeek + LOAN_WEEKS)})` : ""}</div>
+      ${Math.round(rules().interest * 100)}% interest · Total = Principal × ${(1 + rules().interest).toFixed(2)} · Due: Week ${state.currentWeek + rules().loanWeeks}${state.commenceDate ? ` (${weekDate(state.currentWeek + rules().loanWeeks)})` : ""}</div>
     <div class="mact"><button class="sec" onclick="closeLoanMo()">Cancel</button><button onclick="doIssueLoan()">Issue Loan</button></div>`;
   document.getElementById("loan-mo").classList.add("open");
 }
@@ -949,8 +1211,8 @@ function renderLoans() {
       const dueStr = `Wk${l.due_week}${state.commenceDate ? `<br><span style="font-size:10px;color:var(--tx3)">${weekDate(l.due_week)}</span>` : ""}`;
       const actions = isAdmin
         ? `<td style="white-space:nowrap">
-      ${l.status === "active" ? `<button onclick="openRepay(${l.id})" style="padding:3px 8px;font-size:11px">Repay</button> ` : ""}
-      <button class="red" onclick="openDeleteLoan(${l.id})" style="padding:3px 8px;font-size:11px">Delete</button></td>`
+      ${l.status === "active" ? `<button class="sm" onclick="openRepay(${l.id})">Repay</button> ` : ""}
+      <button class="red sm" onclick="openDeleteLoan(${l.id})">Delete</button></td>`
         : "<td></td>";
       return `<tr><td>#${l.id}</td><td>${m ? m.name : "?"}</td><td>${fmt(l.principal)}</td><td>${fmt(loanTotalDue(l))}</td>
       <td>${fmt(owed)}</td><td>Wk${l.issued_week}</td><td>${dueStr}</td>
@@ -984,7 +1246,7 @@ function renderWeekly() {
       '<div class="empty">Add members first.</div>';
     return;
   }
-  const isActiveWk = viewedWeek <= ACTIVE_WEEKS;
+  const isActiveWk = viewedWeek <= rules().activeWeeks;
   const aC = isAdmin && isActiveWk ? "<th></th>" : "";
   const seedCol = isAdmin ? "<th>Seed</th>" : "<th>Seed</th>";
   const rows = state.members
@@ -994,11 +1256,11 @@ function renderWeekly() {
         : 0;
       const st = !isActiveWk
         ? '<span class="badge bx">Grace Week</span>'
-        : paid >= CONTRIBUTION
+        : paid >= contribFor(viewedWeek)
           ? '<span class="badge bg">Paid</span>'
           : '<span class="badge ba">Missed</span>';
       const seedPd = state.seedPaid[m.id] || 0;
-      const seedOwed = Math.max(0, SEED_AMOUNT - seedPd);
+      const seedOwed = Math.max(0, rules().seedAmount - seedPd);
       const seedSt =
         seedOwed === 0
           ? '<span class="badge bg">✓</span>'
@@ -1007,8 +1269,8 @@ function renderWeekly() {
         isAdmin &&
         isActiveWk &&
         viewedWeek <= state.currentWeek &&
-        paid < CONTRIBUTION
-          ? `<td><button onclick="markPaid(${m.id},${viewedWeek})" style="padding:3px 8px;font-size:11px">Mark Paid</button></td>`
+        paid < contribFor(viewedWeek)
+          ? `<td><button class="sm" onclick="markPaid(${m.id},${viewedWeek})">Mark Paid</button></td>`
           : isAdmin
             ? "<td></td>"
             : "";
@@ -1022,7 +1284,7 @@ function renderWeekly() {
 async function markPaid(mid, week) {
   if (!isAdmin) return;
   if (!state.contributions[mid]) state.contributions[mid] = {};
-  state.contributions[mid][week] = CONTRIBUTION;
+  state.contributions[mid][week] = contribFor(week);
   const idx = state.loans.findIndex(
     (l) =>
       l.memberId === mid &&
@@ -1039,7 +1301,7 @@ window.markPaid = markPaid;
 function renderShare() {
   const el = document.getElementById("share-body");
   if (!isCycleComplete()) {
-    el.innerHTML = `<div class="alert aa">Cycle ends at Week ${TOTAL_WEEKS} (Active: ${ACTIVE_WEEKS} weeks + ${GRACE_WEEKS}-week grace). Currently at Week ${state.currentWeek}.</div>`;
+    el.innerHTML = `<div class="alert aa">Cycle ends at Week ${totalWeeks()} (Active: ${rules().activeWeeks} weeks + ${rules().graceWeeks}-week grace). Currently at Week ${state.currentWeek}.</div>`;
     // Show preview during grace period
     if (!isGracePeriod()) return;
     el.innerHTML +=
@@ -1057,7 +1319,7 @@ function renderShare() {
   const rows = state.members
     .map((m) => {
       const debt = memberBalance(m.id);
-      const seedOwed = Math.max(0, SEED_AMOUNT - (state.seedPaid[m.id] || 0));
+      const seedOwed = Math.max(0, rules().seedAmount - (state.seedPaid[m.id] || 0));
       const totalDebt = debt + seedOwed;
       const overpay = memberOverpayment(m.id);
       const netShare = Math.max(0, eq - totalDebt) + overpay;
@@ -1083,11 +1345,11 @@ function renderShare() {
     <div class="sgrid" style="margin-bottom:16px">
       <div class="scard"><div class="slabel">Total Pool</div><div class="sval">${fmt(pool)}</div></div>
       <div class="scard"><div class="slabel">Members</div><div class="sval">${n}</div></div>
-      <div class="scard"><div class="slabel">Seed per Member</div><div class="sval">${fmt(100000)}</div></div>
+      <div class="scard"><div class="slabel">Seed per Member</div><div class="sval">${fmt(rules().seedAmount)}</div></div>
       <div class="scard"><div class="slabel">Equal Share Each</div><div class="sval">${fmt(eq)}</div></div>
     </div>
     <div style="background:var(--g50);border:1px solid var(--g200);border-radius:var(--rad);padding:14px;margin-bottom:14px;font-size:13px;color:var(--g800)">
-      Pool = Seed ${fmt(seedTotal())} + Contributions ${fmt(totalContribs())} + Interest ${fmt(totalInterest())} = <strong>${fmt(pool)}</strong><br>
+      Pool = Seed ${fmt(seedTotal())} + Contributions ${fmt(totalContribs())} + Interest ${fmt(totalInterest())} + Bank adjustments ${signedFmt(bankAdjTotal())} = <strong>${fmt(pool)}</strong><br>
       <span style="color:var(--g600);font-size:12px">Equal share = ${fmt(eq)} per member. Deductions for unpaid loans/seed. Refunds for overpayments.</span>
     </div>
     <div class="tw"><table>
@@ -1095,35 +1357,70 @@ function renderShare() {
       <tbody>${rows}</tbody></table></div>`;
 }
 
-// ═══ FIRESTORE LISTENER ══════════════════════════════════════
+// ═══ FIRESTORE LISTENER ═════════════════════════════════════
+// Fast start: the last server copy is cached in localStorage and shown
+// straight away (read-only) while Firestore connects. Admin login waits for
+// the first server snapshot so a stale cache can never overwrite newer data.
+const CACHE_KEY = "vb_cache_v1";
 let appReady = false;
+let serverSynced = false;
+
+function normalize(d) {
+  if (!d.seedPaid) d.seedPaid = {};
+  if (!d.rules) d.rules = { ...DEFAULT_RULES };
+  if (!d.weekAmounts) d.weekAmounts = {};
+  if (!d.bank) d.bank = { statement: null, adjustments: [] };
+  d.members.forEach((m) => {
+    if (d.seedPaid[m.id] === undefined) d.seedPaid[m.id] = 0;
+  });
+  return d;
+}
+function showAuthScreen() {
+  document.getElementById("loading-screen").classList.add("gone");
+  document.getElementById("auth-screen").classList.remove("gone");
+  setTimeout(() => document.getElementById("auth-pw").focus(), 100);
+}
+try {
+  const c = localStorage.getItem(CACHE_KEY);
+  if (c) {
+    state = normalize(JSON.parse(c));
+    lastSaved = JSON.stringify(state);
+    appReady = true;
+    showAuthScreen();
+  }
+} catch {}
+
 onSnapshot(
   STATE_DOC,
   (snap) => {
-    const incoming = snap.exists()
-      ? (() => {
-          try {
-            return JSON.parse(snap.data().data);
-          } catch {
-            return freshState();
-          }
-        })()
-      : freshState();
-    // Ensure seedPaid exists for older data
-    if (!incoming.seedPaid) incoming.seedPaid = {};
-    incoming.members.forEach((m) => {
-      if (incoming.seedPaid[m.id] === undefined) incoming.seedPaid[m.id] = 0;
-    });
+    let incoming;
+    try {
+      incoming = snap.exists() ? JSON.parse(snap.data().data) : freshState();
+    } catch {
+      incoming = freshState();
+    }
+    normalize(incoming);
+    if (!snap.metadata.fromCache) {
+      serverSynced = true;
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(incoming));
+      } catch {}
+    }
 
     if (!appReady) {
       state = incoming;
+      lastSaved = JSON.stringify(incoming);
       appReady = true;
-      document.getElementById("loading-screen").classList.add("gone");
-      document.getElementById("auth-screen").classList.remove("gone");
-      setTimeout(() => document.getElementById("auth-pw").focus(), 100);
+      showAuthScreen();
     } else {
       const a = JSON.stringify(incoming),
         b = JSON.stringify(state);
+      if (a !== lastSaved) {
+        // Another device changed the data; our history no longer applies
+        undoStack = [];
+        redoStack = [];
+      }
+      lastSaved = a;
       if (a !== b) {
         state = incoming;
         renderAll();

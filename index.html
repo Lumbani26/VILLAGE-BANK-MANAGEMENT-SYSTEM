@@ -4,10 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tsogolo Bank — Loan Tracker</title>
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"
-    />
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js" />
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js" />
     <link rel="stylesheet" href="index.css" />
   </head>
   <body class="viewer">
@@ -68,6 +67,57 @@
       </div>
     </div>
 
+    <div class="mo" id="rules-mo" onclick="if (event.target === this) closeRulesMo();">
+      <div class="mbox">
+        <div class="mtitle">Community Rules</div>
+        <p class="hint">
+          Changes apply from now on. Existing loans keep the interest rate they
+          were issued at, and past weeks keep the contribution amount that
+          applied then. You can reverse a change with Undo.
+        </p>
+        <div id="rules-body" class="form-stack"></div>
+        <div class="mact">
+          <button class="sec" onclick="closeRulesMo()">Cancel</button
+          ><button onclick="saveRules()">Save Rules</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="mo" id="bank-mo" onclick="if (event.target === this) closeBankMo();">
+      <div class="mbox">
+        <div class="mtitle">Bank Reconciliation</div>
+        <p class="hint">
+          Record bank charges or interest so the pool matches what the bank
+          actually holds. These flow into the end-of-cycle payout.
+        </p>
+        <div class="form-stack">
+          <div class="fg">
+            <label>Balance on latest bank statement (MWK)</label>
+            <div class="inline">
+              <input type="number" id="bank-stmt" placeholder="e.g. 2450000" />
+              <button class="sec" onclick="saveBankStatement()">Save</button>
+            </div>
+          </div>
+          <div class="fg">
+            <label>Add charge or interest</label>
+            <div class="inline">
+              <select id="bank-adj-type">
+                <option value="charge">Charge (-)</option>
+                <option value="interest">Interest (+)</option>
+              </select>
+              <input type="number" id="bank-adj-amt" min="1" placeholder="Amount" />
+            </div>
+            <div class="inline">
+              <input type="text" id="bank-adj-note" placeholder="Note (e.g. monthly fee)" />
+              <button onclick="addBankAdjustment()">Add</button>
+            </div>
+          </div>
+          <div id="bank-log"></div>
+        </div>
+        <div class="mact"><button class="sec" onclick="closeBankMo()">Close</button></div>
+      </div>
+    </div>
+
     <div
       class="mo"
       id="clear-mo"
@@ -110,7 +160,7 @@
       onclick="if (event.target === this) closeDelMemMo();"
     >
       <div class="mbox">
-        <div class="mtitle">🗑 Remove Member</div>
+        <div class="mtitle">Remove Member</div>
         <div id="del-mem-body"></div>
         <div class="mact">
           <button class="sec" onclick="closeDelMemMo()">Cancel</button
@@ -207,7 +257,7 @@
       onclick="if (event.target === this) closeDelLoanMo();"
     >
       <div class="mbox">
-        <div class="mtitle">🗑 Delete Loan</div>
+        <div class="mtitle">Delete Loan</div>
         <div id="del-loan-body"></div>
         <div class="mact">
           <button class="sec" onclick="closeDelLoanMo()">Cancel</button
@@ -224,7 +274,7 @@
         <div class="hicon">T</div>
         <div>
           <!-- <div class="hname">tsogolo</div> -->
-          <div class="hsub">Loan Tracker</div>
+          <div class="hsub">Tsogolo</div>
         </div>
       </div>
       <div class="hright">
@@ -232,6 +282,8 @@
         <span class="wbadge" id="hweek">Week 0 of 20</span>
         <span class="grace-badge" id="grace-badge">Grace Period</span>
         <span class="rpill viewer" id="rpill">Viewer</span>
+        <button class="hbtn ao" id="undo-btn" onclick="undo()" title="Undo (Ctrl+Z)" disabled>Undo</button>
+        <button class="hbtn ao" id="redo-btn" onclick="redo()" title="Redo (Ctrl+Y)" disabled>Redo</button>
         <button class="hbtn ao" id="lock-btn" onclick="lockApp()">Lock</button>
         <button
           class="hbtn"
@@ -241,7 +293,8 @@
         >
           Admin
         </button>
-        <button class="hbtn ao" onclick="openPwMo()">⚙</button>
+        <button class="hbtn ao" onclick="openRulesMo()">Rules</button>
+        <button class="hbtn ao" onclick="openPwMo()" title="Change password">Password</button>
         <button
           class="hbtn ao"
           onclick="openClearMo()"
@@ -254,10 +307,10 @@
 
     <main>
       <div class="vbanner gone" id="vbanner">
-        🔒 Read-only view — contact the admin to make changes.
+        Read-only view — contact the admin to make changes.
       </div>
       <div class="grace-banner" id="grace-banner">
-        ⏳ <strong>Grace Period (Weeks 21–25):</strong> No new contributions or
+        <strong>Grace Period (Weeks 21–25):</strong> No new contributions or
         loans. All outstanding balances must be repaid before Week 25.
       </div>
 
@@ -304,6 +357,7 @@
           </button>
         </div>
         <div id="d-alerts" style="margin-top: 11px"></div>
+        <div class="card" id="bank-card"></div>
         <div class="sh" style="margin-top: 18px">
           <span class="st">Active Loans</span>
         </div>
