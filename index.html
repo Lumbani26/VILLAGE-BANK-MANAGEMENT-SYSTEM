@@ -24,18 +24,31 @@
         <div class="auth-h">tsogolo</div>
         <div class="auth-sub">Loan Tracker</div>
         <div class="fg" style="margin-bottom: 10px">
-          <label>Admin Password</label>
+          <label>Admin Email</label>
           <input
-            type="password"
-            id="auth-pw"
+            type="email"
+            id="auth-email"
+            autocomplete="username"
             placeholder="Leave blank to view only"
             onkeydown="if (event.key === 'Enter') doLogin();"
           />
         </div>
-        <button style="width: 100%" onclick="doLogin()">Continue</button>
+        <div class="fg" style="margin-bottom: 10px">
+          <label>Password</label>
+          <input
+            type="password"
+            id="auth-pw"
+            autocomplete="current-password"
+            onkeydown="if (event.key === 'Enter') doLogin();"
+          />
+        </div>
+        <button style="width: 100%" onclick="doLogin()">Sign in</button>
         <div class="auth-err" id="auth-err"></div>
         <div class="auth-or">
           <a onclick="asViewer()">Continue as viewer (read-only)</a>
+        </div>
+        <div class="auth-or" style="margin-top: 8px">
+          <a onclick="doResetPw()">Forgot password?</a>
         </div>
       </div>
     </div>
@@ -52,7 +65,7 @@
           <label>Current Password</label><input type="password" id="pw-cur" />
         </div>
         <div class="fg" style="margin-bottom: 10px">
-          <label>New Password (min 4 chars)</label
+          <label>New Password (min 6 chars)</label
           ><input type="password" id="pw-new" />
         </div>
         <div class="fg" style="margin-bottom: 10px">
@@ -284,7 +297,7 @@
         <span class="rpill viewer" id="rpill">Viewer</span>
         <button class="hbtn ao" id="undo-btn" onclick="undo()" title="Undo (Ctrl+Z)" disabled>Undo</button>
         <button class="hbtn ao" id="redo-btn" onclick="redo()" title="Redo (Ctrl+Y)" disabled>Redo</button>
-        <button class="hbtn ao" id="lock-btn" onclick="lockApp()">Lock</button>
+        <button class="hbtn ao" id="lock-btn" onclick="lockApp()">Sign out</button>
         <button
           class="hbtn"
           id="login-btn"
